@@ -6,11 +6,13 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet, Platform } from 'react-native';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MainTabParamList } from './types';
 import { Colors } from '../theme/colors';
 import { FontFamily, FontSize } from '../theme/typography';
-import { useCartStore } from '../store/cartStore';
+import { useCart } from '../hooks/useCart';
 
 // Tab screens (we use stacks inside each tab for deeper navigation)
 import HomeStackNavigator from './stacks/HomeStackNavigator';
@@ -40,8 +42,8 @@ function TabIcon({ name, focused, badgeCount }: TabIconProps) {
     <View style={styles.iconContainer}>
       <MaterialCommunityIcons
         name={focused ? TabIcons[name].active : TabIcons[name].inactive}
-        size={22}
-        color={focused ? Colors.tabActive : Colors.tabInactive}
+        size={21}
+        color={focused ? Colors.secondary : Colors.tabInactive}
       />
       {badgeCount !== undefined && badgeCount > 0 && (
         <View style={styles.badge}>
@@ -54,17 +56,44 @@ function TabIcon({ name, focused, badgeCount }: TabIconProps) {
   );
 }
 
+const homeTabIcon = ({ focused }: { focused: boolean }) => (
+  <TabIcon name="Home" focused={focused} />
+);
+
+const categoriesTabIcon = ({ focused }: { focused: boolean }) => (
+  <TabIcon name="Categories" focused={focused} />
+);
+
+const wishlistTabIcon = ({ focused }: { focused: boolean }) => (
+  <TabIcon name="Wishlist" focused={focused} />
+);
+
+const accountTabIcon = ({ focused }: { focused: boolean }) => (
+  <TabIcon name="Account" focused={focused} />
+);
+
 export default function MainTabNavigator() {
-  const cartCount = useCartStore((s) => s.totalItems());
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Platform.select({ ios: 14, android: 8 }) ?? 8);
+  const tabBarHeight = 58 + bottomInset;
+  const { data: cart } = useCart();
+  const cartCount = cart?.items_count ?? 0;
+
+  const defaultTabBarStyle = [styles.tabBar, { height: tabBarHeight, paddingBottom: bottomInset }];
+
+  const cartTabIcon = ({ focused }: { focused: boolean }) => (
+    <TabIcon name="Cart" focused={focused} badgeCount={cartCount} />
+  );
 
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: Colors.tabActive,
+        tabBarStyle: [styles.tabBar, { height: tabBarHeight, paddingBottom: bottomInset }],
+        tabBarActiveTintColor: Colors.secondary,
         tabBarInactiveTintColor: Colors.tabInactive,
         tabBarLabelStyle: styles.tabLabel,
+        tabBarItemStyle: styles.tabBarItem,
         tabBarHideOnKeyboard: true,
       }}
     >
@@ -73,7 +102,7 @@ export default function MainTabNavigator() {
         component={HomeStackNavigator}
         options={{
           tabBarLabel: 'الرئيسية',
-          tabBarIcon: ({ focused }) => <TabIcon name="Home" focused={focused} />,
+          tabBarIcon: homeTabIcon,
         }}
       />
       <Tab.Screen
@@ -81,17 +110,21 @@ export default function MainTabNavigator() {
         component={CategoriesStackNavigator}
         options={{
           tabBarLabel: 'الأقسام',
-          tabBarIcon: ({ focused }) => <TabIcon name="Categories" focused={focused} />,
+          tabBarIcon: categoriesTabIcon,
         }}
       />
       <Tab.Screen
         name="Cart"
         component={CartStackNavigator}
-        options={{
-          tabBarLabel: 'السلة',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="Cart" focused={focused} badgeCount={cartCount} />
-          ),
+        options={({ route }) => {
+          const focusedRouteName = getFocusedRouteNameFromRoute(route) ?? 'CartScreen';
+          const hideTabBar = focusedRouteName === 'Checkout' || focusedRouteName === 'OrderSuccess';
+
+          return {
+            tabBarLabel: 'السلة',
+            tabBarIcon: cartTabIcon,
+            tabBarStyle: hideTabBar ? { display: 'none' } : defaultTabBarStyle,
+          };
         }}
       />
       <Tab.Screen
@@ -99,7 +132,7 @@ export default function MainTabNavigator() {
         component={WishlistStackNavigator}
         options={{
           tabBarLabel: 'المفضلة',
-          tabBarIcon: ({ focused }) => <TabIcon name="Wishlist" focused={focused} />,
+          tabBarIcon: wishlistTabIcon,
         }}
       />
       <Tab.Screen
@@ -107,7 +140,7 @@ export default function MainTabNavigator() {
         component={AccountStackNavigator}
         options={{
           tabBarLabel: 'حسابي',
-          tabBarIcon: ({ focused }) => <TabIcon name="Account" focused={focused} />,
+          tabBarIcon: accountTabIcon,
         }}
       />
     </Tab.Navigator>
@@ -117,21 +150,22 @@ export default function MainTabNavigator() {
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: Colors.navBackground,
-    borderTopColor: Colors.border,
-    borderTopWidth: 1,
-    height: Platform.select({ ios: 84, android: 64 }),
-    paddingBottom: Platform.select({ ios: 24, android: 8 }),
-    paddingTop: 8,
+    borderTopColor: Colors.borderLight,
+    borderTopWidth: 0,
+    paddingTop: 7,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 14,
   },
+  tabBarItem: { paddingTop: 2 },
   tabLabel: {
     fontFamily: FontFamily.arabicMedium,
     fontSize: FontSize.xs,
-    marginTop: 2,
+    marginTop: 1,
   },
   iconContainer: {
     position: 'relative',

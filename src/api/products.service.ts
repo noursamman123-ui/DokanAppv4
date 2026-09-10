@@ -1,6 +1,6 @@
 import apiClient from './client';
 import { Endpoints } from './endpoints';
-import { Product, ProductFilters } from '../types';
+import { Product, ProductFilters, ProductReview } from '../types';
 
 export const ProductsService = {
   getProducts: async (filters: ProductFilters = {}): Promise<Product[]> => {
@@ -57,5 +57,28 @@ export const ProductsService = {
       params: { on_sale: true, per_page: 10 },
     });
     return response.data;
+  },
+
+  /** Fetch specific products by id (used for upsell/cross-sell lists). */
+  getByIds: async (ids: number[]): Promise<Product[]> => {
+    if (ids.length === 0) return [];
+    const response = await apiClient.get<Product[]>(Endpoints.storeProducts.list, {
+      params: { include: ids.join(','), per_page: ids.length },
+    });
+    return response.data;
+  },
+
+  getReviews: async (productId: number): Promise<ProductReview[]> => {
+    const response = await apiClient.get<ProductReview[]>(Endpoints.storeProducts.reviews(productId));
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  /**
+   * Register interest in an out-of-stock product. This only stores the
+   * request server-side — actually notifying the customer when stock
+   * returns is separate infrastructure, not implemented yet.
+   */
+  requestStockNotification: async (productId: number, phone: string): Promise<void> => {
+    await apiClient.post(Endpoints.notifyMe.request, { product_id: productId, phone });
   },
 };

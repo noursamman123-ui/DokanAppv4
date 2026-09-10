@@ -14,27 +14,30 @@ import {
   Alert,
   Modal,
   FlatList,
+  Linking,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { CartStackParamList } from '../../../navigation/types';
-import { useCartStore } from '../../../store/cartStore';
+import { useCart, CART_QUERY_KEY } from '../../../hooks/useCart';
 import { useAuthStore } from '../../../store/authStore';
 import { OrdersService } from '../../../api/orders.service';
 import { CheckoutOtpService } from '../../../api/checkout-otp.service';
 import { BootstrapService } from '../../../api/bootstrap.service';
 import { CartService } from '../../../api/cart.service';
-import { TokenStorage } from '../../../utils/storage';
-import { UserAddress } from '../../../types';
+import { GuestOrdersStorage, TokenStorage, CheckoutOtpSessionStorage } from '../../../utils/storage';
 import { Colors } from '../../../theme/colors';
 import { Typography, FontFamily, FontSize } from '../../../theme/typography';
 import { Spacing, BorderRadius } from '../../../theme/spacing';
 import { Shadows } from '../../../theme/shadows';
 import { decodeHtmlEntities, formatPrice, stripHtml } from '../../../utils/formatters';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type NavProp = NativeStackNavigationProp<CartStackParamList, 'Checkout'>;
+const SHAM_CASH_QR_STATIC_URL = 'https://dokan.com.sy/wp-content/plugins//woocommerce-gateway-shamcash/shamcash.jpg';
 
 const SYRIAN_GOVERNORATES = [
   'دمشق',
@@ -120,6 +123,195 @@ const extractOrderIdentifiers = (payload: unknown) => {
   return { orderId, orderNumber };
 };
 
+const extractOrderKey = (payload: unknown): string => {
+  const data = (payload ?? {}) as Record<string, unknown>;
+  const nestedOrder = (data.order ?? null) as Record<string, unknown> | null;
+
+  const candidates = [
+    data.order_key,
+    data.key,
+    nestedOrder?.order_key,
+    nestedOrder?.key,
+  ];
+
+  return candidates
+    .map((candidate) => (typeof candidate === 'string' ? candidate.trim() : ''))
+    .find((candidate) => candidate.length > 0 && candidate !== 'undefined') ?? '';
+};
+
+const extractUrlLikeValue = (value: unknown, depth = 0): string => {
+  if (depth > 5 || value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return /^https?:\/\//i.test(trimmed) ? trimmed : '';
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = extractUrlLikeValue(item, depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+    return '';
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const priorityKeys = Object.keys(record).sort((a, b) => {
+      const aScore = /(redirect|payment|url|pay|checkout)/i.test(a) ? 0 : 1;
+      const bScore = /(redirect|payment|url|pay|checkout)/i.test(b) ? 0 : 1;
+      return aScore - bScore;
+    });
+
+    for (const key of priorityKeys) {
+      const found = extractUrlLikeValue(record[key], depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return '';
+};
+
+const extractPaymentRedirectUrl = (payload: unknown): string => {
+  const data = (payload ?? {}) as Record<string, unknown>;
+  const paymentResult = (data.payment_result ?? null) as Record<string, unknown> | null;
+  const paymentDetails = Array.isArray(paymentResult?.payment_details)
+    ? paymentResult?.payment_details
+    : [];
+
+  const candidates = [
+    paymentResult?.redirect_url,
+    paymentResult?.redirectUrl,
+    paymentResult?.payment_url,
+    paymentResult?.paymentUrl,
+    data.redirect_url,
+    data.redirectUrl,
+    data.payment_url,
+    data.paymentUrl,
+  ];
+
+  const direct = candidates
+    .map((candidate) => (typeof candidate === 'string' ? candidate.trim() : ''))
+    .find((candidate) => candidate.length > 0 && candidate !== 'undefined');
+
+  if (direct) {
+    return direct;
+  }
+
+  for (const detail of paymentDetails) {
+    const found = extractUrlLikeValue(detail);
+    if (found) {
+      return found;
+    }
+  }
+
+  const fromPaymentResult = extractUrlLikeValue(paymentResult);
+  if (fromPaymentResult) {
+    return fromPaymentResult;
+  }
+
+  return extractUrlLikeValue(data);
+};
+
+const isShamCashGateway = (gateway?: { id?: string; title?: string; description?: string } | null): boolean => {
+  const id = (gateway?.id ?? '').toLowerCase();
+  const title = (gateway?.title ?? '').toLowerCase();
+  const description = decodeHtmlEntities(gateway?.description ?? '').toLowerCase();
+
+  return id.includes('shamcash') || title.includes('شام كاش') || description.includes('شام كاش');
+};
+
+const isCashOnDeliveryGateway = (gateway?: { id?: string; title?: string; description?: string } | null): boolean => {
+  const id = (gateway?.id ?? '').toLowerCase();
+  const title = decodeHtmlEntities(gateway?.title ?? '').toLowerCase();
+  const description = decodeHtmlEntities(gateway?.description ?? '').toLowerCase();
+
+  return id === 'cod' || title.includes('الدفع عند الاستلام') || description.includes('الدفع عند الاستلام');
+};
+
+const buildOrderPayUrl = (siteUrl: string | undefined, orderId: number, orderKey: string): string => {
+  const base = (siteUrl ?? '').trim().replace(/\/+$/, '');
+  const key = orderKey.trim();
+
+  if (!base || !key || !Number.isFinite(orderId) || orderId <= 0) {
+    return '';
+  }
+
+  return `${base}/checkout/order-pay/${orderId}/?pay_for_order=true&key=${encodeURIComponent(key)}`;
+};
+
+const buildPhoneLinkedEmail = (fullPhone: string): string => {
+  const digits = fullPhone.replace(/\D+/g, '');
+  if (!digits) {
+    return 'guest@dokanapp.local';
+  }
+  return `guest-${digits}@dokanapp.local`;
+};
+
+const extractFirstImageUrlFromHtml = (value?: string): string => {
+  if (!value) {
+    return '';
+  }
+
+  const decoded = decodeHtmlEntities(value);
+  const srcMatch = decoded.match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (srcMatch?.[1]?.trim()) {
+    return srcMatch[1].trim();
+  }
+
+  // Support plain-text URLs pasted in gateway description fields.
+  const directUrlMatch = decoded.match(
+    /(https?:\/\/[^\s"'<>]+\.(?:png|jpe?g|webp|gif|svg)(?:\?[^\s"'<>]*)?)/i
+  );
+  return directUrlMatch?.[1]?.trim() ?? '';
+};
+
+const stripHtmlToText = (value?: string): string => {
+  if (!value) {
+    return '';
+  }
+
+  return decodeHtmlEntities(value)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const resolveGatewayAssetUrl = (assetUrl: string, siteUrl?: string): string => {
+  const normalizedAsset = assetUrl.trim();
+  if (!normalizedAsset) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(normalizedAsset)) {
+    return normalizedAsset;
+  }
+
+  if (normalizedAsset.startsWith('//')) {
+    return `https:${normalizedAsset}`;
+  }
+
+  const base = (siteUrl ?? '').trim();
+  const originMatch = base.match(/^https?:\/\/[^/]+/i);
+  const origin = originMatch?.[0] ?? '';
+
+  if (!origin) {
+    return normalizedAsset;
+  }
+
+  if (normalizedAsset.startsWith('/')) {
+    return `${origin}${normalizedAsset}`;
+  }
+
+  return `${origin}/${normalizedAsset.replace(/^\.?\//, '')}`;
+};
+
 const mapOtpErrorMessage = (
   error: unknown,
   fallbackMessage: string
@@ -162,11 +354,13 @@ const mapOtpErrorMessage = (
 };
 
 export default function CheckoutScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
   const queryClient = useQueryClient();
-  const { items, totalPrice, clearCart, couponCode } = useCartStore();
+  const { data: checkoutCart } = useCart();
+  const items = checkoutCart?.items ?? [];
+  const couponCode = checkoutCart?.coupons?.[0]?.code ?? null;
   const user = useAuthStore((s) => s.user);
-  const total = totalPrice();
 
   const parseMoney = (value: string | number | undefined, fallback = 0) => {
     if (value === undefined || value === null) {
@@ -198,34 +392,107 @@ export default function CheckoutScreen() {
   const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
   const [resendSecondsLeft, setResendSecondsLeft] = useState(0);
 
+  // Restore a still-valid OTP session on mount — covers the case where
+  // Android reclaimed the JS context while the app was backgrounded (e.g.
+  // the user switched to WhatsApp to read the code) and this screen just
+  // remounted from scratch. Without this, a perfectly valid code has no
+  // entry screen to go back to.
+  useEffect(() => {
+    const pending = CheckoutOtpSessionStorage.get();
+    if (!pending) {
+      return;
+    }
+    setOtpSessionId(pending.otpSessionId);
+    setOtpMaskedPhone(pending.otpMaskedPhone);
+    setOtpExpiresAt(pending.otpExpiresAt);
+    setOtpResendAt(pending.otpResendAt);
+    setIsOtpModalVisible(true);
+  }, []);
+
   const { data: bootstrapData, isLoading: isPaymentMethodsLoading } = useQuery({
     queryKey: ['bootstrap'],
     queryFn: BootstrapService.getBootstrapData,
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: checkoutCart } = useQuery({
-    queryKey: ['checkout-cart-preview', user?.id ?? 'guest', items.length, total],
-    queryFn: CartService.getCart,
-    staleTime: 30 * 1000,
-    enabled: items.length > 0,
-  });
-
-  const initialPhone = splitPhoneByCountry(user?.shipping.phone ?? user?.billing.phone ?? user?.phone ?? '');
+  const initialPhone = splitPhoneByCountry(user?.shipping?.phone ?? user?.billing?.phone ?? user?.phone ?? '');
 
   const [shippingForm, setShippingForm] = useState({
-    first_name: user?.shipping.first_name ?? user?.first_name ?? '',
-    last_name: user?.shipping.last_name ?? user?.last_name ?? '',
-    address_1: user?.shipping.address_1 ?? '',
-    address_2: user?.shipping.address_2 ?? '',
-    city: user?.shipping.city ?? user?.shipping.state ?? '',
-    state: user?.shipping.state ?? user?.shipping.city ?? '',
-    postcode: user?.shipping.postcode ?? '',
+    first_name: user?.shipping?.first_name ?? user?.first_name ?? '',
+    last_name: user?.shipping?.last_name ?? user?.last_name ?? '',
+    address_1: user?.shipping?.address_1 ?? '',
+    address_2: user?.shipping?.address_2 ?? '',
+    city: user?.shipping?.city ?? user?.shipping?.state ?? '',
+    state: user?.shipping?.state ?? user?.shipping?.city ?? '',
+    postcode: user?.shipping?.postcode ?? '',
     country: 'SY',
     phone_country: initialPhone.phone_country,
     phone_local: initialPhone.phone_local,
-    email: user?.billing.email ?? user?.email ?? '',
+    email: '',
   });
+
+  useEffect(() => {
+    // Shipping totals only update once WooCommerce knows the destination and a
+    // rate is selected — neither happens just by editing local form state, so
+    // without this the preview total silently stays pre-shipping until the
+    // order is actually placed (updateCustomer + selectShippingRate normally
+    // only run inside OrdersService.placeOrder, i.e. too late for a live preview).
+    if (items.length === 0 || !shippingForm.city.trim()) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const syncShippingPreview = async () => {
+      try {
+        const updatedCart = await CartService.updateCustomer({
+          shipping_address: {
+            first_name: shippingForm.first_name,
+            last_name: shippingForm.last_name,
+            company: '',
+            address_1: shippingForm.address_1,
+            address_2: shippingForm.address_2,
+            city: shippingForm.city.trim(),
+            state: shippingForm.state.trim(),
+            postcode: shippingForm.postcode.trim() || '00000',
+            country: 'SY',
+          },
+        });
+
+        if (cancelled || !updatedCart.needs_shipping) {
+          return;
+        }
+
+        for (const shippingPackage of updatedCart.shipping_rates ?? []) {
+          const rate =
+            shippingPackage.shipping_rates.find((r) => r.selected) ??
+            shippingPackage.shipping_rates[0];
+          if (rate) {
+            await CartService.selectShippingRate(shippingPackage.package_id, rate.rate_id);
+          }
+        }
+      } catch {
+        // Silent — placeOrder() redoes this and surfaces real errors there.
+      } finally {
+        if (!cancelled) {
+          queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+        }
+      }
+    };
+
+    const timer = setTimeout(syncShippingPreview, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    items.length,
+    shippingForm.city,
+    shippingForm.state,
+    shippingForm.postcode,
+    shippingForm.address_1,
+    queryClient,
+  ]);
 
   useEffect(() => {
     if (!isOtpModalVisible) {
@@ -245,39 +512,50 @@ export default function CheckoutScreen() {
     return () => clearInterval(interval);
   }, [isOtpModalVisible, otpExpiresAt, otpResendAt]);
 
-  const applySavedAddress = (address?: UserAddress | null) => {
-    if (!address) {
-      return;
-    }
-
-    const selectedCity = (address.city || address.state || '').trim();
-    const parsedPhone = splitPhoneByCountry(address.phone ?? user?.phone ?? user?.billing.phone ?? '');
-
-    setShippingForm({
-      first_name: address.first_name ?? user?.first_name ?? '',
-      last_name: address.last_name ?? user?.last_name ?? '',
-      address_1: address.address_1 ?? '',
-      address_2: address.address_2 ?? '',
-      city: selectedCity,
-      state: selectedCity,
-      postcode: address.postcode ?? '',
-      country: 'SY',
-      phone_country: parsedPhone.phone_country,
-      phone_local: parsedPhone.phone_local,
-      email: address.email ?? user?.email ?? '',
-    });
-  };
-
-  const openSavedAddresses = () => {
-    (navigation.getParent()?.getParent() as any)?.navigate('Account', {
-      screen: 'Addresses',
-    });
-  };
-
   const paymentMethods = useMemo(
     () => (bootstrapData?.payment_gateways ?? []).filter((gateway) => gateway.enabled),
     [bootstrapData?.payment_gateways]
   );
+
+  const selectedPaymentGateway = useMemo(
+    () => paymentMethods.find((gateway) => gateway.id === paymentMethod) ?? null,
+    [paymentMethods, paymentMethod]
+  );
+
+  const isShamCashSelected = useMemo(
+    () => isShamCashGateway(selectedPaymentGateway),
+    [selectedPaymentGateway]
+  );
+
+  const isCashOnDeliverySelected = useMemo(
+    () => isCashOnDeliveryGateway(selectedPaymentGateway),
+    [selectedPaymentGateway]
+  );
+
+  const shamCashQrUrl = useMemo(() => {
+    if (!isShamCashSelected || !selectedPaymentGateway) {
+      return '';
+    }
+
+    const fromStaticLink = resolveGatewayAssetUrl(SHAM_CASH_QR_STATIC_URL, bootstrapData?.store?.url);
+    const fromDescription = extractFirstImageUrlFromHtml(selectedPaymentGateway.description);
+    const fromIcon = extractFirstImageUrlFromHtml(selectedPaymentGateway.icon);
+    const rawUrl = fromStaticLink || fromDescription || fromIcon;
+
+    return resolveGatewayAssetUrl(rawUrl, bootstrapData?.store?.url);
+  }, [
+    isShamCashSelected,
+    selectedPaymentGateway,
+    bootstrapData?.store?.url,
+  ]);
+
+  const shamCashDescription = useMemo(() => {
+    if (!isShamCashSelected || !selectedPaymentGateway) {
+      return '';
+    }
+
+    return stripHtmlToText(selectedPaymentGateway.description);
+  }, [isShamCashSelected, selectedPaymentGateway]);
 
   const selectedPhoneCountry = useMemo(
     () => PHONE_COUNTRIES.find((country) => country.iso === shippingForm.phone_country) ?? PHONE_COUNTRIES[0],
@@ -293,9 +571,9 @@ export default function CheckoutScreen() {
   };
 
   const currencySymbol = checkoutCart?.totals?.currency_symbol || 'ل.س';
-  const subtotalAmount = parseMoney(checkoutCart?.totals?.subtotal, total);
-  const shippingAmount = parseMoney(checkoutCart?.totals?.shipping_total, 0);
-  const discountAmount = parseMoney(checkoutCart?.totals?.discount_total, 0);
+  const subtotalAmount = parseMoney(checkoutCart?.totals?.total_items, 0);
+  const shippingAmount = parseMoney(checkoutCart?.totals?.total_shipping, 0);
+  const discountAmount = parseMoney(checkoutCart?.totals?.total_discount, 0);
 
   const selectedShippingRate = useMemo(() => {
     const packages = checkoutCart?.shipping_rates ?? [];
@@ -369,7 +647,7 @@ export default function CheckoutScreen() {
     return 'غير محددة';
   }, [selectedShippingRate]);
   const finalAmount = parseMoney(
-    checkoutCart?.totals?.total,
+    checkoutCart?.totals?.total_price,
     Math.max(0, subtotalAmount + shippingAmount - discountAmount)
   );
 
@@ -429,13 +707,23 @@ export default function CheckoutScreen() {
     try {
       const otpResponse = await CheckoutOtpService.sendOtp(buildOtpPayload());
       const now = Date.now();
+      const maskedPhone = otpResponse.masked_phone || buildFullPhoneNumber();
+      const expiresAt = now + (otpResponse.expires_in ?? 300) * 1000;
+      const resendAt = now + (otpResponse.resend_after ?? 60) * 1000;
 
       setOtpSessionId(otpResponse.otp_session_id);
-      setOtpMaskedPhone(otpResponse.masked_phone || buildFullPhoneNumber());
-      setOtpExpiresAt(now + (otpResponse.expires_in ?? 300) * 1000);
-      setOtpResendAt(now + (otpResponse.resend_after ?? 60) * 1000);
+      setOtpMaskedPhone(maskedPhone);
+      setOtpExpiresAt(expiresAt);
+      setOtpResendAt(resendAt);
       setOtpCode('');
       setIsOtpModalVisible(true);
+
+      CheckoutOtpSessionStorage.save({
+        otpSessionId: otpResponse.otp_session_id,
+        otpMaskedPhone: maskedPhone,
+        otpExpiresAt: expiresAt,
+        otpResendAt: resendAt,
+      });
     } catch (error) {
       Alert.alert(
         'تعذر إرسال رمز التحقق',
@@ -453,6 +741,7 @@ export default function CheckoutScreen() {
       const selectedCity = shippingForm.city.trim();
       const fullPhone = buildFullPhoneNumber();
       const normalizedPostcode = shippingForm.postcode.trim() || '00000';
+      const phoneLinkedEmail = buildPhoneLinkedEmail(fullPhone);
 
       const order = await OrdersService.placeOrder(
         {
@@ -465,7 +754,7 @@ export default function CheckoutScreen() {
             state: selectedCity,
             postcode: normalizedPostcode,
             country: 'SY',
-            email: shippingForm.email.trim() || '',
+            email: phoneLinkedEmail,
             phone: fullPhone,
             company: '',
           },
@@ -487,24 +776,77 @@ export default function CheckoutScreen() {
           payment_data: [],
           coupon_code: couponCode ?? undefined,
         },
-        items,
         otpProofToken
       );
 
       const { orderId, orderNumber } = extractOrderIdentifiers(order);
+      const orderKey = extractOrderKey(order);
+      const paymentRedirectUrl = extractPaymentRedirectUrl(order);
 
       if (!orderId) {
         throw new Error('تم إرسال الطلب لكن تعذر قراءة رقم الطلب من الخادم. يرجى فتح صفحة طلباتي للتأكد من إنشائه.');
       }
 
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      // Save locally so "طلباتي" can show this order immediately without login —
+      // orderKey doubles as the guest's access token for viewing it later.
+      GuestOrdersStorage.add({
+        orderId,
+        orderNumber,
+        orderKey,
+        phone: fullPhone,
+        createdAt: new Date().toISOString(),
+      });
 
-      clearCart();
+      const canUseOrderPayFallback = !isCashOnDeliverySelected && !isShamCashSelected;
+      const fallbackOrderPayUrl = canUseOrderPayFallback
+        ? buildOrderPayUrl(bootstrapData?.store?.url, orderId, orderKey)
+        : '';
+      const finalRedirectUrl = paymentRedirectUrl || fallbackOrderPayUrl;
+
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      // WooCommerce empties the server cart once the order is placed.
+      queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+
       setIsOtpModalVisible(false);
       setOtpSessionId('');
       setOtpCode('');
+      CheckoutOtpSessionStorage.clear();
       navigation.replace('OrderSuccess', { orderId, orderNumber });
+
+      // canUseOrderPayFallback already covers every online gateway (Albaraka,
+      // Paymera, and any future one) — this used to only alert for Albaraka
+      // by name, so any other online gateway with a missing redirect URL
+      // failed completely silently: the order existed, payment was still
+      // required, and the customer got no indication of either.
+      const gatewayLabel = selectedPaymentGateway?.title || 'بوابة الدفع';
+
+      if (canUseOrderPayFallback && !finalRedirectUrl) {
+        Alert.alert(
+          'متابعة الدفع',
+          `تم إنشاء الطلب، لكن لم يصل رابط الدفع من ${gatewayLabel}. يرجى فتح "طلباتي" وإكمال الدفع من تفاصيل الطلب.`
+        );
+        return;
+      }
+
+      if (!canUseOrderPayFallback || !finalRedirectUrl) {
+        return;
+      }
+
+      try {
+        await Linking.openURL(finalRedirectUrl);
+      } catch {
+        Alert.alert(
+          'متابعة الدفع',
+          `تم إنشاء الطلب، لكن تعذر فتح رابط ${gatewayLabel} تلقائيًا. يمكنك إكمال الدفع من تفاصيل الطلب.`
+        );
+      }
     } catch (error) {
+      // placeOrder() runs address/shipping/coupon steps sequentially against the
+      // server cart — a failure partway through (e.g. coupon step) still leaves
+      // earlier steps (address, shipping rate) applied server-side. Without this,
+      // the on-screen total stays whatever it was before the attempt, which can
+      // now be wrong relative to what a retry will actually charge.
+      queryClient.invalidateQueries({ queryKey: ['checkout-cart-preview'] });
       const apiError = error as { message?: string };
       Alert.alert('خطأ في الطلب', apiError?.message ?? 'حدث خطأ أثناء إتمام الطلب.');
     } finally {
@@ -563,10 +905,10 @@ export default function CheckoutScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>رجوع</Text>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.secondary} />
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[2] }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="رجوع" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <MaterialCommunityIcons name="arrow-right" style={styles.backIcon} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>إتمام الطلب</Text>
         <View style={styles.backBtn} />
@@ -576,24 +918,6 @@ export default function CheckoutScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>عنوان الفاتورة والشحن</Text>
-            <TouchableOpacity onPress={openSavedAddresses}>
-              <Text style={styles.linkText}>العناوين المحفوظة</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.savedActions}>
-            <TouchableOpacity
-              style={styles.savedAddressBtn}
-              onPress={() => applySavedAddress(user?.shipping ?? null)}
-            >
-              <Text style={styles.savedAddressText}>استخدام عنوان الشحن المحفوظ</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.savedAddressBtn}
-              onPress={() => applySavedAddress(user?.billing ?? null)}
-            >
-              <Text style={styles.savedAddressText}>استخدام عنوان الفاتورة المحفوظ</Text>
-            </TouchableOpacity>
           </View>
 
           <View style={styles.fieldWrapper}>
@@ -687,18 +1011,11 @@ export default function CheckoutScreen() {
             </View>
           </View>
 
-          <View style={styles.fieldWrapper}>
-            <Text style={styles.label}>البريد الإلكتروني (اختياري)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="أدخل البريد الإلكتروني"
-              placeholderTextColor={Colors.placeholder}
-              value={shippingForm.email}
-              onChangeText={(value) => updateField('email', value)}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              textAlign="right"
-            />
+          <View style={styles.infoNote}>
+            <MaterialCommunityIcons name="information-outline" style={styles.infoNoteIcon} />
+            <Text style={styles.infoNoteText}>
+              سيتم ربط الطلب برقم الجوال والتحقق عبر واتساب، ولا يلزم تسجيل الدخول لإتمام الشراء.
+            </Text>
           </View>
         </View>
 
@@ -731,6 +1048,21 @@ export default function CheckoutScreen() {
           ) : (
             <Text style={styles.emptyPaymentText}>لا توجد وسائل دفع متاحة حالياً</Text>
           )}
+
+          {isShamCashSelected ? (
+            <View style={styles.shamCashCard}>
+              <Text style={styles.shamCashHint}>
+                {shamCashDescription || 'ادفع باستخدام شام كاش عبر مسح رمز QR.'}
+              </Text>
+              {shamCashQrUrl ? (
+                <Image source={{ uri: shamCashQrUrl }} style={styles.shamCashQrImage} resizeMode="contain" />
+              ) : (
+                <Text style={styles.shamCashMissingQr}>
+                  لم يتم العثور على QR في إعدادات بوابة شام كاش بالموقع.
+                </Text>
+              )}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.section}>
@@ -785,7 +1117,7 @@ export default function CheckoutScreen() {
           </View>
         </View>
 
-        <View style={{ height: 160 }} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
 
       <View style={styles.bottomBar}>
@@ -812,7 +1144,7 @@ export default function CheckoutScreen() {
           <View style={styles.cityModalCard}>
             <View style={styles.cityModalHeader}>
               <Text style={styles.cityModalTitle}>اختر المحافظة</Text>
-              <TouchableOpacity onPress={() => setIsCityModalVisible(false)}>
+              <TouchableOpacity onPress={() => setIsCityModalVisible(false)} accessibilityRole="button" accessibilityLabel="إغلاق">
                 <MaterialCommunityIcons name="close" style={styles.closeText} />
               </TouchableOpacity>
             </View>
@@ -843,6 +1175,8 @@ export default function CheckoutScreen() {
               <TouchableOpacity
                 onPress={() => !isActionLoading && setIsOtpModalVisible(false)}
                 disabled={isActionLoading}
+                accessibilityRole="button"
+                accessibilityLabel="إغلاق"
               >
                 <MaterialCommunityIcons name="close" style={styles.closeText} />
               </TouchableOpacity>
@@ -905,7 +1239,7 @@ export default function CheckoutScreen() {
           <View style={styles.cityModalCard}>
             <View style={styles.cityModalHeader}>
               <Text style={styles.cityModalTitle}>اختر دولة الرقم</Text>
-              <TouchableOpacity onPress={() => setIsPhoneCountryModalVisible(false)}>
+              <TouchableOpacity onPress={() => setIsPhoneCountryModalVisible(false)} accessibilityRole="button" accessibilityLabel="إغلاق">
                 <MaterialCommunityIcons name="close" style={styles.closeText} />
               </TouchableOpacity>
             </View>
@@ -936,24 +1270,27 @@ export default function CheckoutScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.secondary,
     paddingTop: Spacing[10],
-    paddingBottom: Spacing[3],
+    paddingBottom: Spacing[4],
     paddingHorizontal: Spacing[4],
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    ...Shadows.sm,
+    borderBottomLeftRadius: BorderRadius['2xl'],
+    borderBottomRightRadius: BorderRadius['2xl'],
   },
   backBtn: { width: 40, alignItems: 'center' },
-  backIcon: { fontSize: 16, color: Colors.textPrimary },
-  headerTitle: { ...Typography.h4, color: Colors.textPrimary, fontFamily: FontFamily.arabicBold },
+  backIcon: { fontSize: 22, color: Colors.textInverse },
+  headerTitle: { ...Typography.h4, color: Colors.textInverse, fontFamily: FontFamily.arabicBold },
   scrollContent: { padding: Spacing[4], gap: Spacing[3] },
   section: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
     padding: Spacing[4],
-    ...Shadows.card,
+    ...Shadows.xs,
   },
   sectionHeader: {
     flexDirection: 'row-reverse',
@@ -967,22 +1304,6 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.arabicBold,
     textAlign: 'right',
     marginBottom: Spacing[3],
-  },
-  linkText: { ...Typography.label, color: Colors.primary, fontFamily: FontFamily.arabicMedium },
-  savedActions: { gap: Spacing[2], marginBottom: Spacing[3] },
-  savedAddressBtn: {
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primarySurface,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing[2.5],
-    paddingHorizontal: Spacing[3],
-  },
-  savedAddressText: {
-    ...Typography.label,
-    color: Colors.primary,
-    textAlign: 'right',
-    fontFamily: FontFamily.arabicMedium,
   },
   fieldWrapper: { marginBottom: Spacing[3], gap: Spacing[1] },
   label: {
@@ -1078,6 +1399,29 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.arabicRegular,
   },
   notesInput: { height: 84 },
+  infoNote: {
+    backgroundColor: Colors.surfaceSecondary,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: Spacing[2.5],
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: Spacing[2],
+  },
+  infoNoteIcon: {
+    fontSize: 18,
+    color: Colors.secondary,
+    marginTop: 1,
+  },
+  infoNoteText: {
+    flex: 1,
+    ...Typography.bodySmall,
+    color: Colors.textSecondary,
+    textAlign: 'right',
+    lineHeight: 20,
+  },
   paymentOption: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -1088,7 +1432,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     marginBottom: Spacing[2],
   },
-  paymentActive: { borderColor: Colors.primary, backgroundColor: Colors.primarySurface },
+  paymentActive: { borderColor: Colors.secondary, backgroundColor: '#EEF1F8' },
   radioOuter: {
     width: 20,
     height: 20,
@@ -1098,12 +1442,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.primary },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.secondary },
   paymentIcon: { fontSize: 20, color: Colors.textSecondary },
   paymentCopy: { flex: 1, gap: Spacing[1] },
   paymentLabel: { ...Typography.bodySmall, color: Colors.textPrimary, fontFamily: FontFamily.arabicMedium },
   paymentDescription: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'right' },
   emptyPaymentText: { ...Typography.bodySmall, color: Colors.textSecondary, textAlign: 'right' },
+  shamCashCard: {
+    marginTop: Spacing[2],
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing[3],
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: 'center',
+    gap: Spacing[2],
+  },
+  shamCashHint: {
+    ...Typography.bodySmall,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    fontFamily: FontFamily.arabicMedium,
+  },
+  shamCashQrImage: {
+    width: 220,
+    height: 220,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.surface,
+  },
+  shamCashMissingQr: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    fontFamily: FontFamily.arabicRegular,
+  },
   summaryRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', paddingVertical: Spacing[2] },
   summaryLabel: { ...Typography.body, color: Colors.textSecondary },
   summaryValue: { ...Typography.body, color: Colors.textPrimary, fontFamily: FontFamily.arabicMedium },
@@ -1128,7 +1500,7 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
   placeOrderBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.secondary,
     borderRadius: BorderRadius.xl,
     paddingVertical: Spacing[4],
     alignItems: 'center',
@@ -1243,7 +1615,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing[3],
   },
   verifyBtn: {
-    backgroundColor: Colors.success,
+    backgroundColor: Colors.secondary,
     borderRadius: BorderRadius.lg,
     paddingVertical: Spacing[3],
     alignItems: 'center',
@@ -1267,4 +1639,5 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontFamily: FontFamily.arabicMedium,
   },
+  bottomSpacer: { height: 160 },
 });

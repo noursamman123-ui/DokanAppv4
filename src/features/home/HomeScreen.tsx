@@ -1,40 +1,195 @@
 /**
- * Home Screen – Noon-inspired main homepage.
- * Features: header, search bar, banner slider, categories, product sections.
+ * Home Screen – mobile-first storefront layout inspired by the provided reference.
  */
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  FlatList, Dimensions, StatusBar,
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  FlatList,
+  Dimensions,
+  StatusBar,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import FastImage from 'react-native-fast-image';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HomeStackParamList } from '../../navigation/types';
 import { Colors } from '../../theme/colors';
-import { Typography, FontFamily } from '../../theme/typography';
+import { Typography, FontFamily, FontSize } from '../../theme/typography';
 import { Spacing, BorderRadius } from '../../theme/spacing';
 import { Shadows } from '../../theme/shadows';
 import { HomeService } from '../../api/home.service';
-import { Product, Banner } from '../../types';
-import ProductCard from '../../components/cards/ProductCard';
+import { ProductsService } from '../../api/products.service';
+import { NotificationsService } from '../../api/notifications.service';
+import { Product, Banner, Category } from '../../types';
 import {
-  BannerSkeleton, ProductCardSkeleton,
+  BannerSkeleton,
+  ProductCardSkeleton,
+  CategoryChipSkeleton,
 } from '../../components/feedback/Skeleton';
-import { useCartStore } from '../../store/cartStore';
+import FloatingCartBar from '../../components/cart/FloatingCartBar';
+import ProductCard from '../../components/cards/ProductCard';
+import { useCart } from '../../hooks/useCart';
 import { buildFastImageSource, resolveMediaUrl } from '../../utils/media';
+import { stripHtml } from '../../utils/formatters';
 
-const { width } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
+
+const HORIZONTAL_PADDING = Spacing[4];
+const BANNER_WIDTH = screenWidth - HORIZONTAL_PADDING * 2;
+const PRODUCTS_PAGE_SIZE = 20;
 
 type HomeNavProp = NativeStackNavigationProp<HomeStackParamList, 'HomeScreen'>;
 
-export default function HomeScreen() {
-  const navigation = useNavigation<HomeNavProp>();
-  const cartCount = useCartStore((s) => s.totalItems());
+type HeaderIconButtonProps = {
+  icon: string;
+  badgeCount?: number;
+  accessibilityLabel: string;
+  onPress: () => void;
+};
 
-  const { data: apiData, isLoading } = useQuery({
+const getCategoryIcon = (category: Category): string => {
+  const key = `${category.slug} ${category.name}`.toLowerCase();
+  if (/mobile|phone|elect|الكتر|موبايل|هاتف/.test(key)) return 'cellphone';
+  if (/fashion|cloth|wear|مد|ملابس|أزياء/.test(key)) return 'tshirt-crew-outline';
+  if (/beauty|cosmetic|perfume|عطر|مكياج|تجميل/.test(key)) return 'spray-bottle';
+  if (/home|kitchen|منزل|مطبخ|أدوات/.test(key)) return 'sofa-outline';
+  if (/baby|kids|طفل|أطفال/.test(key)) return 'baby-face-outline';
+  if (/sport|fitness|رياض/.test(key)) return 'dumbbell';
+  return 'shape-outline';
+};
+
+function HeaderIconButton({ icon, badgeCount = 0, accessibilityLabel, onPress }: HeaderIconButtonProps) {
+  return (
+    <TouchableOpacity
+      style={styles.headerIconButton}
+      onPress={onPress}
+      activeOpacity={0.88}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+    >
+      <MaterialCommunityIcons name={icon} size={20} color={Colors.textPrimary} />
+      {badgeCount > 0 && (
+        <View style={styles.headerIconBadge}>
+          <Text style={styles.headerIconBadgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+function BannerCarousel({ banners }: { banners: Banner[] }) {
+  const [activeIndex, setActiveIndex] = React.useState(0);
+
+  return (
+    <View style={styles.bannerOuter}>
+      <FlatList
+        horizontal
+        pagingEnabled
+        data={banners}
+        keyExtractor={(item, index) => String(item.id ?? index)}
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={BANNER_WIDTH}
+        decelerationRate="fast"
+        renderItem={({ item }) => (
+          <View style={styles.bannerCard}>
+            <FastImage
+              source={buildFastImageSource(item.image, 'high')}
+              style={styles.bannerImage}
+              resizeMode={FastImage.resizeMode.cover}
+            />
+            <View style={styles.bannerOverlay} />
+            <View style={styles.bannerContent}>
+              <Text style={styles.bannerTitle} numberOfLines={2}>
+                {stripHtml(item.title) || 'عروض دكان الكبرى'}
+              </Text>
+              <View style={styles.bannerCta}>
+                <Text style={styles.bannerCtaText}>تسوّق الآن</Text>
+              </View>
+            </View>
+          </View>
+        )}
+        onMomentumScrollEnd={(event) => {
+          const index = Math.round(event.nativeEvent.contentOffset.x / BANNER_WIDTH);
+          setActiveIndex(index);
+        }}
+      />
+      <View style={styles.dotsRow}>
+        {banners.map((_, index) => (
+          <View
+            key={index}
+            style={[styles.dot, index === activeIndex && styles.dotActive]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function CategoryStrip({
+  categories,
+  onCategoryPress,
+}: {
+  categories: Category[];
+  onCategoryPress: (category: Category) => void;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.categoriesRow}
+    >
+      {categories.map((category) => {
+        const imageUri = resolveMediaUrl(category.image?.src);
+        return (
+          <TouchableOpacity
+            key={category.id}
+            style={styles.categoryItem}
+            onPress={() => onCategoryPress(category)}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={stripHtml(category.name)}
+          >
+            <View style={styles.categoryIconWrap}>
+              {imageUri ? (
+                <FastImage
+                  source={buildFastImageSource(imageUri, 'normal')}
+                  style={styles.categoryImage}
+                  resizeMode={FastImage.resizeMode.cover}
+                />
+              ) : (
+                <MaterialCommunityIcons
+                  name={getCategoryIcon(category)}
+                  size={24}
+                  color={Colors.secondary}
+                />
+              )}
+            </View>
+            <Text style={styles.categoryName} numberOfLines={2}>
+              {stripHtml(category.name)}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<HomeNavProp>();
+  const { data: cart } = useCart();
+  const cartCount = cart?.items_count ?? 0;
+
+  const { data: homeData, isLoading } = useQuery({
     queryKey: ['home'],
     queryFn: HomeService.getHomeData,
     staleTime: 2 * 60 * 1000,
@@ -43,341 +198,546 @@ export default function HomeScreen() {
     placeholderData: (previousData) => previousData,
   });
 
-  const homeData = apiData;
+  const { data: unreadNotifications } = useQuery({
+    queryKey: ['notifications-unread-count'],
+    queryFn: NotificationsService.getUnreadCount,
+    staleTime: 60 * 1000,
+    retry: 1,
+  });
+
+  const {
+    data: allProductsPages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: isAllProductsLoading,
+  } = useInfiniteQuery({
+    queryKey: ['home-all-products'],
+    queryFn: ({ pageParam = 1 }) =>
+      ProductsService.getProducts({
+        page: pageParam,
+        per_page: PRODUCTS_PAGE_SIZE,
+        orderby: 'date',
+        order: 'desc',
+      }),
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length >= PRODUCTS_PAGE_SIZE ? allPages.length + 1 : undefined,
+    initialPageParam: 1,
+    staleTime: 60 * 1000,
+  });
+
+  const banners = useMemo(() => (homeData?.banners ?? []).slice(0, 4), [homeData?.banners]);
+
+  const featuredCategories = useMemo(
+    () => (homeData?.featured_categories ?? []).slice(0, 8),
+    [homeData?.featured_categories]
+  );
+
+  const initialHomeProducts = useMemo(() => {
+    const source = [
+      ...(homeData?.latest_products ?? []),
+      ...(homeData?.best_sellers ?? []),
+      ...(homeData?.featured_products ?? []),
+    ];
+    const unique = new Map<number, Product>();
+    source.forEach((product) => {
+      if (!unique.has(product.id)) unique.set(product.id, product);
+    });
+    return Array.from(unique.values());
+  }, [homeData?.latest_products, homeData?.best_sellers, homeData?.featured_products]);
+
+  const allHomeProducts = useMemo(() => {
+    const fetchedProducts = allProductsPages?.pages.flat() ?? [];
+    const source = fetchedProducts.length > 0 ? fetchedProducts : initialHomeProducts;
+    const unique = new Map<number, Product>();
+    source.forEach((product) => {
+      if (!unique.has(product.id)) unique.set(product.id, product);
+    });
+    return Array.from(unique.values());
+  }, [allProductsPages?.pages, initialHomeProducts]);
 
   useEffect(() => {
-    if (!homeData) {
-      return;
+    const preloadSources = [
+      ...banners.map((banner) => resolveMediaUrl(banner.image)),
+      ...featuredCategories.map((category) => resolveMediaUrl(category.image?.src)),
+      ...allHomeProducts.slice(0, 12).map((product) => resolveMediaUrl(product.images?.[0]?.src)),
+    ]
+      .filter(Boolean)
+      .slice(0, 20)
+      .map((uri) => ({
+        uri,
+        priority: FastImage.priority.normal,
+        cache: FastImage.cacheControl.web,
+      }));
+
+    if (preloadSources.length > 0) {
+      FastImage.preload(preloadSources);
     }
+  }, [banners, featuredCategories, allHomeProducts]);
 
-    const preloadUrls = [
-      ...(homeData.banners ?? []).slice(0, 2).map((banner) => resolveMediaUrl(banner.image)),
-      ...(homeData.featured_products ?? []).slice(0, 8).map((product) => resolveMediaUrl(product.images?.[0]?.src)),
-      ...(homeData.sale_products ?? []).slice(0, 4).map((product) => resolveMediaUrl(product.images?.[0]?.src)),
-    ].filter(Boolean);
+  const handleProductPress = useCallback(
+    (product: Product) => {
+      navigation.navigate('ProductDetail', { productId: product.id, productName: product.name });
+    },
+    [navigation]
+  );
 
-    if (preloadUrls.length > 0) {
-      FastImage.preload(
-        preloadUrls.map((uri) => ({
-          uri,
-          priority: FastImage.priority.normal,
-          cache: FastImage.cacheControl.web,
-        }))
-      );
-    }
-  }, [homeData]);
-
-  const handleProductPress = useCallback((product: Product) => {
-    navigation.navigate('ProductDetail', { productId: product.id, productName: product.name });
+  const handleSearchPress = useCallback(() => {
+    navigation.navigate('Search');
   }, [navigation]);
 
-  const handleSeeAll = useCallback((filter: 'featured' | 'sale' | 'best_sellers' | 'latest', title: string) => {
-    navigation.navigate('ProductList', { filter, title });
+  const handleCategoryPress = useCallback(
+    (category: Category) => {
+      navigation.navigate('ProductList', {
+        categoryId: category.id,
+        categoryName: category.name,
+      });
+    },
+    [navigation]
+  );
+
+  const handleOpenSaleProducts = useCallback(() => {
+    navigation.navigate('ProductList', { filter: 'sale', title: 'التخفيضات' });
   }, [navigation]);
+
+  const handleFetchMoreProducts = useCallback(() => {
+    if (!hasNextPage || isFetchingNextPage) return;
+    fetchNextPage();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  const handleCartPress = useCallback(() => {
+    navigation.getParent()?.navigate('Cart');
+  }, [navigation]);
+
+  const handleNotificationPress = useCallback(() => {
+    const parent = navigation.getParent();
+    if (!parent) return;
+    (parent as any).navigate('Account', { screen: 'Notifications' });
+  }, [navigation]);
+
+  const renderProduct = useCallback(
+    ({ item }: { item: Product }) => (
+      <View style={styles.cardWrapper}>
+        <ProductCard product={item} onPress={handleProductPress} />
+      </View>
+    ),
+    [handleProductPress]
+  );
+
+  const listHeader = (
+    <View style={styles.mainContent}>
+      {isLoading ? (
+        <BannerSkeleton />
+      ) : banners.length > 0 ? (
+        <BannerCarousel banners={banners} />
+      ) : (
+        <TouchableOpacity
+          style={styles.emptyBanner}
+          onPress={handleOpenSaleProducts}
+          activeOpacity={0.92}
+          accessibilityRole="button"
+          accessibilityLabel="عروض دكان الكبرى، اضغط لعرض صفحة التخفيضات"
+        >
+          <Text style={styles.emptyBannerText}>عروض دكان الكبرى</Text>
+          <Text style={styles.emptyBannerSubText}>اضغط لعرض صفحة التخفيضات</Text>
+        </TouchableOpacity>
+      )}
+
+      <View style={styles.categoriesSection}>
+        {isLoading ? (
+          <View style={styles.categoriesSkeletonRow}>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <CategoryChipSkeleton key={index} />
+            ))}
+          </View>
+        ) : (
+          <CategoryStrip categories={featuredCategories} onCategoryPress={handleCategoryPress} />
+        )}
+      </View>
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>جميع المنتجات</Text>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('ProductList', { filter: 'latest', title: 'جميع المنتجات' })}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.seeAll}>عرض الكل</Text>
+        </TouchableOpacity>
+      </View>
+
+      {(isLoading || isAllProductsLoading) && (
+        <View style={styles.productsGrid}>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <ProductCardSkeleton key={index} />
+          ))}
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
 
-      {/* ─── Header ──────────────────────────────────────────────── */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.greeting}>مرحباً</Text>
-            <Text style={styles.storeName}>متجر دكان</Text>
-          </View>
-          <TouchableOpacity style={styles.cartBtn}
-            onPress={() => navigation.getParent()?.navigate('Cart')}>
-            <MaterialCommunityIcons name="cart-outline" size={24} color={Colors.textPrimary} />
-            {cartCount > 0 && (
-              <View style={styles.cartBadge}>
-                <Text style={styles.cartBadgeText}>{cartCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Search Bar */}
-        <TouchableOpacity
-          style={styles.searchBar}
-          onPress={() => navigation.navigate('Search')}
-          activeOpacity={0.9}
-        >
-          <MaterialCommunityIcons name="magnify" size={18} color={Colors.textTertiary} />
-          <Text style={styles.searchPlaceholder}>ابحث عن منتج، ماركة، أو قسم...</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ─── Content ─────────────────────────────────────────────── */}
-      <ScrollView
+      <FlatList
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
-      >
-
-        {/* Banner Slider */}
-        {isLoading ? (
-          <BannerSkeleton />
-        ) : homeData?.banners && homeData.banners.length > 0 ? (
-          <BannerSlider banners={homeData.banners} />
-        ) : null}
-
-        {/* Featured Products */}
-        <Section
-          title="منتجات مميزة"
-          onSeeAll={() => handleSeeAll('featured', 'منتجات مميزة')}
-        >
-          {isLoading ? (
-            <HorizontalSkeletonList />
-          ) : (
-            <FlatList
-              horizontal
-              data={homeData?.featured_products ?? []}
-              renderItem={({ item }) => (
-                <ProductCard product={item} onPress={handleProductPress} horizontal />
-              )}
-              keyExtractor={(item) => String(item.id)}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.productList}
-            />
-          )}
-        </Section>
-
-        {/* Sale Products */}
-        <SaleBanner onPress={() => handleSeeAll('sale', 'عروض اليوم')} />
-
-        <Section
-          title="عروض اليوم"
-          onSeeAll={() => handleSeeAll('sale', 'عروض اليوم')}
-        >
-          {isLoading ? (
-            <HorizontalSkeletonList />
-          ) : (
-            <FlatList
-              horizontal
-              data={homeData?.sale_products ?? []}
-              renderItem={({ item }) => (
-                <ProductCard product={item} onPress={handleProductPress} horizontal />
-              )}
-              keyExtractor={(item) => String(item.id)}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.productList}
-            />
-          )}
-        </Section>
-
-        {/* Best Sellers */}
-        <Section
-          title="الأكثر مبيعاً"
-          onSeeAll={() => handleSeeAll('best_sellers', 'الأكثر مبيعاً')}
-        >
-          {isLoading ? (
-            <HorizontalSkeletonList />
-          ) : (
-            <FlatList
-              horizontal
-              data={homeData?.best_sellers ?? []}
-              renderItem={({ item }) => (
-                <ProductCard product={item} onPress={handleProductPress} horizontal />
-              )}
-              keyExtractor={(item) => String(item.id)}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.productList}
-            />
-          )}
-        </Section>
-
-        {/* Latest Products – Grid */}
-        <Section
-          title="أحدث المنتجات"
-          onSeeAll={() => handleSeeAll('latest', 'أحدث المنتجات')}
-        >
-          {isLoading ? (
-            <View style={styles.grid}>
-              {[1, 2, 3, 4].map((k) => (
-                <ProductCardSkeleton key={k} />
-              ))}
-            </View>
-          ) : (
-            <View style={styles.grid}>
-              {(homeData?.latest_products ?? []).slice(0, 6).map((item) => (
-                <ProductCard key={item.id} product={item} onPress={handleProductPress} />
-              ))}
-            </View>
-          )}
-        </Section>
-
-        <View style={styles.bottomPadding} />
-      </ScrollView>
-    </View>
-  );
-}
-
-// ─── Sub-components ────────────────────────────────────────────────────────
-
-function BannerSlider({ banners }: { banners: Banner[] }) {
-  const [activeIndex, setActiveIndex] = React.useState(0);
-
-  return (
-    <View style={styles.bannerContainer}>
-      <FlatList
-        horizontal
-        pagingEnabled
-        data={banners}
-        renderItem={({ item }) => (
-          <FastImage
-            source={buildFastImageSource(item.image, 'high')}
-            style={styles.bannerImage}
-            resizeMode={FastImage.resizeMode.cover}
-          />
-        )}
+        data={isLoading || isAllProductsLoading ? [] : allHomeProducts}
+        numColumns={2}
         keyExtractor={(item) => String(item.id)}
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={(e) => {
-          const index = Math.round(e.nativeEvent.contentOffset.x / width);
-          setActiveIndex(index);
-        }}
+        renderItem={renderProduct}
+        columnWrapperStyle={styles.productsRow}
+        ListHeaderComponent={
+          <>
+            <View style={[styles.header, { paddingTop: insets.top + Spacing[2] }]}>
+              <View style={styles.headerTopRow}>
+                <View style={styles.headerActions}>
+                  <HeaderIconButton
+                    icon="bell-outline"
+                    badgeCount={unreadNotifications ?? 0}
+                    accessibilityLabel="الإشعارات"
+                    onPress={handleNotificationPress}
+                  />
+                  <HeaderIconButton
+                    icon="cart-outline"
+                    badgeCount={cartCount}
+                    accessibilityLabel="سلة التسوق"
+                    onPress={handleCartPress}
+                  />
+                </View>
+
+                <Image
+                  source={require('../../assets/images/logo.png')}
+                  style={styles.brandLogo}
+                  resizeMode="contain"
+                  accessibilityRole="image"
+                  accessibilityLabel="دكان"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.searchBar}
+                onPress={handleSearchPress}
+                activeOpacity={0.92}
+                accessibilityRole="button"
+                accessibilityLabel="البحث عن المنتجات"
+              >
+                <MaterialCommunityIcons name="magnify" size={18} color={Colors.textTertiary} />
+                <Text style={styles.searchPlaceholder}>ابحث عن المنتجات...</Text>
+              </TouchableOpacity>
+            </View>
+
+            {listHeader}
+          </>
+        }
+        ListEmptyComponent={
+          !isLoading && !isAllProductsLoading ? (
+            <View style={styles.emptyProducts}>
+              <MaterialCommunityIcons name="shopping-outline" size={64} color={Colors.textTertiary} />
+              <Text style={styles.emptyProductsText}>لا توجد منتجات متاحة حالياً</Text>
+            </View>
+          ) : null
+        }
+        ListFooterComponent={
+          allHomeProducts.length > 0 && !isLoading && !isAllProductsLoading ? (
+            <View style={styles.loadMoreWrap}>
+              {hasNextPage ? (
+                <TouchableOpacity
+                  style={[styles.loadMoreBtn, isFetchingNextPage && styles.loadMoreBtnDisabled]}
+                  onPress={handleFetchMoreProducts}
+                  disabled={isFetchingNextPage}
+                  activeOpacity={0.88}
+                >
+                  {isFetchingNextPage ? (
+                    <ActivityIndicator color={Colors.textInverse} />
+                  ) : (
+                    <Text style={styles.loadMoreBtnText}>إظهار المزيد</Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.allLoadedText}>تم عرض جميع المنتجات</Text>
+              )}
+            </View>
+          ) : null
+        }
+        onEndReached={handleFetchMoreProducts}
+        onEndReachedThreshold={0.5}
       />
-      {/* Dots indicator */}
-      <View style={styles.dotsRow}>
-        {banners.map((_, i) => (
-          <View key={i} style={[styles.dot, i === activeIndex && styles.dotActive]} />
-        ))}
-      </View>
+
+      <FloatingCartBar />
     </View>
   );
 }
 
-interface SectionProps {
-  title: string;
-  onSeeAll?: () => void;
-  children: React.ReactNode;
-}
-
-function Section({ title, onSeeAll, children }: SectionProps) {
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {onSeeAll && (
-          <TouchableOpacity onPress={onSeeAll}>
-            <Text style={styles.seeAll}>عرض الكل</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      {children}
-    </View>
-  );
-}
-
-function SaleBanner({ onPress }: { onPress: () => void }) {
-  return (
-    <TouchableOpacity style={styles.saleBanner} onPress={onPress} activeOpacity={0.9}>
-      <View style={styles.saleBannerTextRow}>
-        <MaterialCommunityIcons name="fire" size={16} color={Colors.primary} />
-        <Text style={styles.saleBannerText}>عروض حصرية – وفّر حتى 70%</Text>
-      </View>
-      <View style={styles.saleBannerCtaRow}>
-        <Text style={styles.saleBannerCta}>تسوّق الآن</Text>
-        <MaterialCommunityIcons name="chevron-left" size={18} color={Colors.primary} />
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-function HorizontalSkeletonList() {
-  return (
-    <FlatList
-      horizontal
-      data={[1, 2, 3]}
-      renderItem={() => (
-        <View style={{ width: 180, marginRight: 12 }}>
-          <ProductCardSkeleton />
-        </View>
-      )}
-      keyExtractor={(item) => String(item)}
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ paddingHorizontal: 16 }}
-    />
-  );
-}
-
-// ─── Styles ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-
-  // Header
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 110,
+  },
   header: {
     backgroundColor: Colors.surface,
-    paddingTop: Spacing[10],
-    paddingHorizontal: Spacing[5],
-    paddingBottom: Spacing[3],
-    ...Shadows.sm,
+    paddingHorizontal: HORIZONTAL_PADDING,
+    paddingBottom: Spacing[4],
+    borderBottomLeftRadius: BorderRadius['2xl'],
+    borderBottomRightRadius: BorderRadius['2xl'],
+    ...Shadows.xs,
   },
-  headerTop: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing[3] },
-  greeting: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'right' },
-  storeName: { ...Typography.h3, color: Colors.textPrimary, fontFamily: FontFamily.arabicBold, textAlign: 'right' },
-  cartBtn: { position: 'relative', padding: Spacing[2] },
-  cartBadge: {
-    position: 'absolute', top: 0, right: 0,
-    backgroundColor: Colors.error, borderRadius: BorderRadius.full,
-    width: 18, height: 18, alignItems: 'center', justifyContent: 'center',
+  headerTopRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing[3],
   },
-  cartBadgeText: { fontSize: 9, color: Colors.textInverse, fontWeight: '700' },
+  headerActions: {
+    flexDirection: 'row-reverse',
+    gap: Spacing[2],
+  },
+  headerIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIconBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  headerIconBadgeText: {
+    color: Colors.textInverse,
+    fontSize: 9,
+    lineHeight: 11,
+    fontFamily: FontFamily.bold,
+  },
+  brandLogo: {
+    width: 92,
+    height: 92 * (344 / 900), // matches the source logo asset's aspect ratio
+  },
   searchBar: {
     backgroundColor: Colors.inputBackground,
+    minHeight: 44,
     borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     paddingHorizontal: Spacing[4],
-    paddingVertical: Spacing[3],
     gap: Spacing[2],
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
-  searchPlaceholder: { ...Typography.body, color: Colors.placeholder, fontFamily: FontFamily.arabicRegular, flex: 1 },
-
-  // Scroll
-  scroll: { flex: 1 },
-  scrollContent: { paddingTop: Spacing[4] },
-
-  // Banner
-  bannerContainer: { marginHorizontal: Spacing[5], borderRadius: BorderRadius.xl, overflow: 'hidden', marginBottom: Spacing[2] },
-  bannerImage: { width: width - Spacing[5] * 2, height: 180 },
-  dotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 5, paddingVertical: Spacing[2] },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.border },
-  dotActive: { backgroundColor: Colors.primary, width: 18 },
-
-  // Sections
-  section: { marginTop: Spacing[5] },
-  sectionHeader: {
-    flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing[5], marginBottom: Spacing[3],
+  searchPlaceholder: {
+    ...Typography.body,
+    color: Colors.placeholder,
+    textAlign: 'right',
+    fontFamily: FontFamily.arabicRegular,
+    flex: 1,
   },
-  sectionTitle: { ...Typography.h4, color: Colors.textPrimary, fontFamily: FontFamily.arabicBold },
-  seeAll: { ...Typography.label, color: Colors.primary, fontFamily: FontFamily.arabicMedium },
-
-  // Product horizontal list
-  productList: { paddingHorizontal: Spacing[5] },
-
-  // Sale Banner
-  saleBanner: {
-    marginHorizontal: Spacing[5], marginTop: Spacing[5],
+  mainContent: {
+    marginTop: Spacing[3],
+    gap: Spacing[4],
+  },
+  bannerOuter: {
+    marginHorizontal: HORIZONTAL_PADDING,
+  },
+  bannerCard: {
+    width: BANNER_WIDTH,
+    height: 150,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+  },
+  bannerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.24)',
+  },
+  bannerContent: {
+    ...StyleSheet.absoluteFillObject,
+    padding: Spacing[4],
+    justifyContent: 'space-between',
+  },
+  bannerTitle: {
+    ...Typography.h4,
+    color: Colors.textInverse,
+    fontFamily: FontFamily.arabicBold,
+    textAlign: 'right',
+    maxWidth: '70%',
+    alignSelf: 'flex-end',
+  },
+  bannerCta: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: Spacing[1.5],
+    borderRadius: BorderRadius.md,
+  },
+  bannerCtaText: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    fontFamily: FontFamily.arabicBold,
+  },
+  dotsRow: {
+    marginTop: Spacing[2],
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing[1],
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.border,
+  },
+  dotActive: {
+    width: 18,
     backgroundColor: Colors.secondary,
-    borderRadius: BorderRadius.xl, padding: Spacing[5],
-    flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center',
+  },
+  emptyBanner: {
+    marginHorizontal: HORIZONTAL_PADDING,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing[6],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyBannerText: {
+    ...Typography.h4,
+    fontFamily: FontFamily.arabicBold,
+    textAlign: 'center',
+    color: Colors.secondary,
+  },
+  emptyBannerSubText: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    fontFamily: FontFamily.arabicMedium,
+    marginTop: Spacing[1.5],
+    textAlign: 'center',
+  },
+  categoriesSection: {
+    minHeight: 94,
+  },
+  categoriesRow: {
+    flexDirection: 'row-reverse',
+    paddingHorizontal: HORIZONTAL_PADDING,
     gap: Spacing[2],
   },
-  saleBannerTextRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: Spacing[1.5], flex: 1 },
-  saleBannerText: { ...Typography.bodySmall, color: Colors.textInverse, fontFamily: FontFamily.arabicBold, flex: 1, textAlign: 'right' },
-  saleBannerCtaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 2 },
-  saleBannerCta: { ...Typography.labelLarge, color: Colors.primary, fontFamily: FontFamily.arabicBold },
-
-  // Grid
-  grid: {
-    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',
-    paddingHorizontal: Spacing[5], gap: Spacing[3],
+  categoryItem: {
+    width: 74,
+    alignItems: 'center',
+    gap: Spacing[1],
   },
-
-  bottomPadding: { height: 100 },
+  categoryIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  categoryImage: {
+    width: 52,
+    height: 52,
+  },
+  categoryName: {
+    ...Typography.caption,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    fontFamily: FontFamily.arabicMedium,
+    lineHeight: 16,
+  },
+  categoriesSkeletonRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-around',
+    paddingHorizontal: HORIZONTAL_PADDING,
+  },
+  sectionHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: HORIZONTAL_PADDING,
+  },
+  sectionTitle: {
+    ...Typography.h4,
+    color: Colors.textPrimary,
+    fontFamily: FontFamily.arabicBold,
+  },
+  seeAll: {
+    ...Typography.label,
+    color: Colors.secondary,
+    fontFamily: FontFamily.arabicSemiBold,
+  },
+  productsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: HORIZONTAL_PADDING,
+    rowGap: Spacing[3],
+  },
+  productsRow: {
+    paddingHorizontal: HORIZONTAL_PADDING,
+  },
+  cardWrapper: {
+    flex: 1,
+    paddingHorizontal: Spacing[1.5],
+  },
+  emptyProducts: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing[8],
+    gap: Spacing[2],
+  },
+  emptyProductsText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    fontFamily: FontFamily.arabicMedium,
+  },
+  loadMoreWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: HORIZONTAL_PADDING,
+    paddingTop: Spacing[2],
+    paddingBottom: Spacing[4],
+  },
+  loadMoreBtn: {
+    minWidth: 160,
+    backgroundColor: Colors.secondary,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing[5],
+    paddingVertical: Spacing[2.5],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadMoreBtnDisabled: {
+    opacity: 0.75,
+  },
+  loadMoreBtnText: {
+    ...Typography.labelLarge,
+    color: Colors.textInverse,
+    fontFamily: FontFamily.arabicBold,
+  },
+  allLoadedText: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    fontFamily: FontFamily.arabicMedium,
+  },
 });

@@ -5,7 +5,7 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View,
-  Text,
+  Image,
   StyleSheet,
   Animated,
   StatusBar,
@@ -70,7 +70,7 @@ export default function SplashScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.secondary} />
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
 
       {/* Logo Area */}
       <Animated.View
@@ -89,12 +89,11 @@ export default function SplashScreen({ navigation }: Props) {
           },
         ]}
       >
-        {/* Brand Logo Placeholder – replace with actual Image */}
-        <View style={styles.logoBadge}>
-          <Text style={styles.logoText}>D</Text>
-        </View>
-        <Text style={styles.brandName}>دكان</Text>
-        <Text style={styles.brandNameEn}>DOKAN</Text>
+        <Image
+          source={require('../../../assets/images/logo.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
       </Animated.View>
 
       {/* Tagline */}
@@ -150,7 +149,7 @@ function LoadingDots() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.secondary,
+    backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -158,43 +157,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  logoBadge: {
-    width: 90,
-    height: 90,
-    borderRadius: 22,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  logoText: {
-    fontSize: 48,
-    fontWeight: '800',
-    color: Colors.secondary,
-    fontFamily: FontFamily.extraBold,
-  },
-  brandName: {
-    fontSize: FontSize['2xl'],
-    color: Colors.textInverse,
-    fontFamily: FontFamily.arabicBold,
-    fontWeight: '700',
-    letterSpacing: 2,
-  },
-  brandNameEn: {
-    fontSize: FontSize.sm,
-    color: Colors.primary,
-    fontFamily: FontFamily.bold,
-    letterSpacing: 6,
-    marginTop: 4,
+  logoImage: {
+    width: 220,
+    height: 220 * (344 / 900), // matches the source logo asset's aspect ratio
   },
   tagline: {
     fontSize: FontSize.md,
-    color: 'rgba(255,255,255,0.6)',
+    color: Colors.textSecondary,
     fontFamily: FontFamily.arabicRegular,
     marginTop: 8,
     letterSpacing: 1,

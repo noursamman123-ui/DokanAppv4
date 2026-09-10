@@ -11,10 +11,12 @@ import { Typography, FontFamily, FontSize } from '../../../theme/typography';
 import { Spacing, BorderRadius } from '../../../theme/spacing';
 import { Shadows } from '../../../theme/shadows';
 import { UserAddress } from '../../../types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type EditAddressRouteProp = RouteProp<AccountStackParamList, 'EditAddress'>;
 
 export default function EditAddressScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<EditAddressRouteProp>();
   const { type } = route.params; // 'billing' or 'shipping'
@@ -161,7 +163,7 @@ export default function EditAddressScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[2] }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backIcon}>رجوع</Text>
         </TouchableOpacity>
@@ -221,8 +223,8 @@ const styles = StyleSheet.create({
   input: { backgroundColor: Colors.inputBackground, borderWidth: 1, borderColor: Colors.inputBorder, borderRadius: BorderRadius.md, paddingHorizontal: Spacing[3], paddingVertical: Spacing[3], fontSize: FontSize.base, color: Colors.textPrimary, fontFamily: FontFamily.arabicRegular },
   locationBtn: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.primary, borderRadius: BorderRadius.md, paddingVertical: Spacing[3], alignItems: 'center', marginBottom: Spacing[2] },
   locationBtnContent: { flexDirection: 'row-reverse', alignItems: 'center', gap: Spacing[1.5] },
-  locationBtnIcon: { fontSize: 18, color: Colors.primary },
-  locationBtnText: { ...Typography.labelLarge, color: Colors.primary, fontFamily: FontFamily.arabicMedium },
+  locationBtnIcon: { fontSize: 18, color: Colors.primaryDark },
+  locationBtnText: { ...Typography.labelLarge, color: Colors.primaryDark, fontFamily: FontFamily.arabicMedium },
   saveBtn: { backgroundColor: Colors.primary, borderRadius: BorderRadius.xl, paddingVertical: Spacing[4], alignItems: 'center', marginTop: Spacing[4] },
   disabled: { opacity: 0.7 },
   saveBtnText: { ...Typography.button, color: Colors.textInverse, fontFamily: FontFamily.arabicBold },

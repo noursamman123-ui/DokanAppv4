@@ -4,20 +4,25 @@
  */
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Dimensions,
+  View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert, ActivityIndicator,
 } from 'react-native';
 import FastImage from 'react-native-fast-image';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { Product, getDiscountPercent } from '../../types';
+import { useQueryClient } from '@tanstack/react-query';
+import { Product, Cart, getDiscountPercent } from '../../types';
 import { Colors } from '../../theme/colors';
 import { Typography, FontFamily, FontSize } from '../../theme/typography';
 import { Spacing, BorderRadius } from '../../theme/spacing';
 import { Shadows } from '../../theme/shadows';
-import { useCartStore } from '../../store/cartStore';
+import { useAddToCart, CART_QUERY_KEY } from '../../hooks/useCart';
 import { useWishlistStore } from '../../store/wishlistStore';
 import { buildFastImageSource, resolveMediaUrl } from '../../utils/media';
+import { formatNumber } from '../../utils/formatters';
 import AddToCartSuccessModal from '../feedback/AddToCartSuccessModal';
+import NotifyMeModal from '../feedback/NotifyMeModal';
+import { ProductsService } from '../../api/products.service';
+import { isProductUnavailable } from '../../utils/productAvailability';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - Spacing[5] * 2 - Spacing[3]) / 2;
@@ -30,7 +35,8 @@ interface ProductCardProps {
 
 function ProductCard({ product, onPress, horizontal = false }: ProductCardProps) {
   const navigation = useNavigation<any>();
-  const addToCart = useCartStore((s) => s.addItem);
+  const queryClient = useQueryClient();
+  const addToCartMutation = useAddToCart();
   const wishlisted = useWishlistStore((s) =>
     s.items.some((item) => item.product_id === product.id)
   );
@@ -43,9 +49,10 @@ function ProductCard({ product, onPress, horizontal = false }: ProductCardProps)
   };
 
   const discountPercent = getDiscountPercent(product);
-  const isOutOfStock = product.stock_status === 'outofstock';
+  const isOutOfStock = isProductUnavailable(product);
   const imageUrl = resolveMediaUrl(product.images[0]?.src);
   const [showAddSuccessModal, setShowAddSuccessModal] = useState(false);
+  const [showNotifyModal, setShowNotifyModal] = useState(false);
   
   const pickFirstNonEmpty = (...values: Array<string | number | undefined | null>) =>
     values.find((value) => value !== undefined && value !== null && String(value).trim() !== '');
@@ -121,19 +128,25 @@ function ProductCard({ product, onPress, horizontal = false }: ProductCardProps)
       onPress(product);
       return;
     }
-    addToCart({
-      product_id: product.id,
-      variation_id: 0,
-      quantity: 1,
-      name: product.name,
-      image: imageUrl,
-      price: price,
-      regular_price: regularPrice,
-      on_sale: product.on_sale,
-      variation: {},
-    });
-    setShowAddSuccessModal(true);
-  }, [addToCart, onPress, product, price, regularPrice, imageUrl, isOutOfStock]);
+
+    const lowStockRemaining = product.low_stock_remaining;
+    if (typeof lowStockRemaining === 'number' && lowStockRemaining > 0) {
+      const cart = queryClient.getQueryData<Cart>(CART_QUERY_KEY);
+      const existingQty = cart?.items.find((i) => i.id === product.id)?.quantity ?? 0;
+      if (existingQty >= lowStockRemaining) {
+        Alert.alert('تنبيه', `الكمية المتوفرة في المخزون: ${lowStockRemaining} فقط`);
+        return;
+      }
+    }
+
+    addToCartMutation.mutate(
+      { productId: product.id, quantity: 1 },
+      {
+        onSuccess: () => setShowAddSuccessModal(true),
+        onError: () => Alert.alert('تعذّرت الإضافة', 'حدث خطأ أثناء إضافة المنتج إلى السلة. يرجى المحاولة مرة أخرى.'),
+      }
+    );
+  }, [addToCartMutation, onPress, product, isOutOfStock, queryClient]);
 
   const handleGoToCart = useCallback(() => {
     setShowAddSuccessModal(false);
@@ -213,7 +226,13 @@ function ProductCard({ product, onPress, horizontal = false }: ProductCardProps)
         )}
 
         {/* Wishlist Button */}
-        <TouchableOpacity style={styles.wishlistBtn} onPress={handleWishlistToggle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity
+          style={styles.wishlistBtn}
+          onPress={handleWishlistToggle}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={wishlisted ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}
+        >
           <MaterialCommunityIcons
             name={wishlisted ? 'heart' : 'heart-outline'}
             style={[styles.wishlistIcon, wishlisted && styles.wishlistActive]}
@@ -230,38 +249,55 @@ function ProductCard({ product, onPress, horizontal = false }: ProductCardProps)
           <View style={styles.ratingRow}>
             <MaterialCommunityIcons name="star" style={styles.ratingStar} />
             <Text style={styles.ratingText}>{parseFloat(product.average_rating).toFixed(1)}</Text>
-            {product.rating_count > 0 && (
-              <Text style={styles.ratingCount}>({product.rating_count})</Text>
-            )}
+            {(() => {
+              const reviewCount = product.review_count ?? product.rating_count ?? 0;
+              return reviewCount > 0 ? (
+                <Text style={styles.ratingCount}>({reviewCount})</Text>
+              ) : null;
+            })()}
           </View>
         )}
 
         {/* Price */}
         <View style={styles.priceRow}>
           <Text style={styles.price}>
-            {parseFloat(price) > 0 
-              ? (parseFloat(price) || 0).toLocaleString('ar-SY') 
+            {parseFloat(price) > 0
+              ? formatNumber(parseFloat(price) || 0)
               : '0'} ل.س
           </Text>
           {product.on_sale && regularPrice && parseFloat(regularPrice) > 0 && parseFloat(regularPrice) > parseFloat(price) && (
             <Text style={styles.regularPrice}>
-              {(parseFloat(regularPrice) || 0).toLocaleString('ar-SY')}
+              {formatNumber(parseFloat(regularPrice) || 0)}
             </Text>
           )}
         </View>
 
         {/* Add to Cart */}
         <TouchableOpacity
-          style={[styles.cartBtn, isOutOfStock && styles.cartBtnDisabled]}
-          onPress={handleAddToCart}
-          disabled={isOutOfStock}
+          style={[styles.cartBtn, isOutOfStock && styles.cartBtnOutOfStock]}
+          onPress={isOutOfStock ? () => setShowNotifyModal(true) : handleAddToCart}
+          disabled={addToCartMutation.isPending}
         >
-          <Text style={styles.cartBtnText}>
-            {isOutOfStock ? 'نفذت الكمية' : product.type === 'variable' ? 'عرض الخيارات' : 'إضافة للسلة'}
-          </Text>
+          {addToCartMutation.isPending ? (
+            <ActivityIndicator size="small" color={Colors.secondary} />
+          ) : (
+            <Text style={styles.cartBtnText}>
+              {isOutOfStock
+                ? 'أعلمني عند التوفر'
+                : product.type === 'variable'
+                  ? 'عرض الخيارات'
+                  : 'إضافة للسلة'}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
       </TouchableOpacity>
+
+      <NotifyMeModal
+        visible={showNotifyModal}
+        onClose={() => setShowNotifyModal(false)}
+        onSubmit={(phone) => ProductsService.requestStockNotification(product.id, phone)}
+      />
 
       <AddToCartSuccessModal
         visible={showAddSuccessModal}
@@ -278,8 +314,10 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.card,
     borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
     overflow: 'hidden',
-    ...Shadows.card,
+    ...Shadows.xs,
     marginBottom: Spacing[3],
   },
   cardHorizontal: {
@@ -312,7 +350,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: Spacing[2],
     left: Spacing[2],
-    backgroundColor: '#FF3B30', // Vibrant Red
+    backgroundColor: Colors.sale,
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing[1.5],
     paddingVertical: 2,
@@ -351,7 +389,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   wishlistActive: {
-    color: '#E02020',
+    color: Colors.error,
   },
 
   content: {
@@ -387,7 +425,7 @@ const styles = StyleSheet.create({
   },
   price: {
     ...Typography.priceSmall,
-    color: '#E02020', // Explicit Red for price
+    color: Colors.sale,
     fontFamily: FontFamily.arabicBold,
   },
   regularPrice: {
@@ -396,18 +434,18 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
   },
   cartBtn: {
-    backgroundColor: '#FF9500', // Vibrant Orange matching the user image
+    backgroundColor: Colors.primary,
     borderRadius: BorderRadius.md,
     paddingVertical: Spacing[2.5],
     alignItems: 'center',
     marginTop: Spacing[1],
   },
-  cartBtnDisabled: {
+  cartBtnOutOfStock: {
     backgroundColor: Colors.border,
   },
   cartBtnText: {
     fontSize: FontSize.xs,
-    color: Colors.textInverse,
+    color: Colors.secondary,
     fontFamily: FontFamily.arabicBold,
     fontWeight: '700',
   },

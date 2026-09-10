@@ -19,6 +19,27 @@ import { APP_BASE_URL } from '../config/environment';
 
 const BASE_URL = APP_BASE_URL;
 
+/**
+ * Dev-only sanity check for API response shapes. Today's cart-totals bug
+ * (the app silently read subtotal/shipping_total/total — fields that don't
+ * exist on the real WC Store API response — and fell back to 0 for weeks
+ * without anyone noticing) is exactly the failure mode this catches: a
+ * missing field degrades silently into a wrong-but-plausible default instead
+ * of surfacing anywhere. Call this at known-critical response sites; it's a
+ * no-op in production builds.
+ */
+export const devWarnIfMissing = (label: string, obj: unknown, requiredKeys: string[]): void => {
+  if (!__DEV__) return;
+  if (!obj || typeof obj !== 'object') {
+    console.warn(`[API shape] ${label}: response is not an object`, obj);
+    return;
+  }
+  const missing = requiredKeys.filter((key) => !(key in (obj as Record<string, unknown>)));
+  if (missing.length > 0) {
+    console.warn(`[API shape] ${label}: missing expected field(s) — ${missing.join(', ')}`, obj);
+  }
+};
+
 // ─── Create Axios Instance ────────────────────────────────────────────────
 const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,

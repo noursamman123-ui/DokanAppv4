@@ -21,8 +21,11 @@ export const AuthService = {
   },
 
   getMe: async (): Promise<User> => {
-    const response = await apiClient.get<User>(Endpoints.auth.me);
-    return response.data;
+    const response = await apiClient.get<any>(Endpoints.auth.me);
+    if (response.data && response.data.success && response.data.data) {
+      return response.data.data as User;
+    }
+    return response.data as User;
   },
 
   forgotPassword: async (email: string): Promise<{ message: string }> => {
@@ -39,5 +42,13 @@ export const AuthService = {
       return response.data.data as User;
     }
     return response.data as User;
+  },
+
+  deleteAccount: async (): Promise<{ message: string }> => {
+    const response = await apiClient.post<any>(Endpoints.auth.deleteAccount);
+    if (response.data && response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    return response.data;
   },
 };

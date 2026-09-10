@@ -21,6 +21,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthStackParamList } from '../../../navigation/types';
 import { Colors } from '../../../theme/colors';
 import { Typography, FontFamily, FontSize } from '../../../theme/typography';
@@ -38,6 +39,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -76,7 +78,7 @@ export default function LoginScreen({ navigation }: Props) {
     >
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + Spacing[4] }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -142,6 +144,8 @@ export default function LoginScreen({ navigation }: Props) {
               <TouchableOpacity
                 style={styles.eyeBtn}
                 onPress={() => setShowPassword(!showPassword)}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
               >
                 <MaterialCommunityIcons
                   name={showPassword ? 'eye-off-outline' : 'eye-outline'}
@@ -158,6 +162,8 @@ export default function LoginScreen({ navigation }: Props) {
           <TouchableOpacity
             onPress={() => navigation.navigate('ForgotPassword')}
             style={styles.forgotBtn}
+            accessibilityRole="button"
+            accessibilityLabel="نسيت كلمة المرور؟"
           >
             <Text style={styles.forgotText}>نسيت كلمة المرور؟</Text>
           </TouchableOpacity>
@@ -167,6 +173,9 @@ export default function LoginScreen({ navigation }: Props) {
             style={[styles.loginBtn, isLoading && styles.loginBtnDisabled]}
             onPress={handleSubmit(onSubmit)}
             disabled={isLoading}
+            accessibilityRole="button"
+            accessibilityLabel="تسجيل الدخول"
+            accessibilityState={{ disabled: isLoading, busy: isLoading }}
           >
             {isLoading ? (
               <ActivityIndicator color={Colors.textInverse} />
@@ -178,7 +187,11 @@ export default function LoginScreen({ navigation }: Props) {
           {/* Register Link */}
           <View style={styles.registerRow}>
             <Text style={styles.registerPrompt}>ليس لديك حساب؟ </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Register')}
+              accessibilityRole="button"
+              accessibilityLabel="إنشاء حساب"
+            >
               <Text style={styles.registerLink}>إنشاء حساب</Text>
             </TouchableOpacity>
           </View>
@@ -230,7 +243,7 @@ const styles = StyleSheet.create({
   errorText: { ...Typography.caption, color: Colors.error, textAlign: 'right' },
 
   forgotBtn: { alignSelf: 'flex-end' },
-  forgotText: { ...Typography.labelLarge, color: Colors.primary },
+  forgotText: { ...Typography.labelLarge, color: Colors.primaryDark },
 
   loginBtn: {
     backgroundColor: Colors.primary,
@@ -244,5 +257,5 @@ const styles = StyleSheet.create({
 
   registerRow: { flexDirection: 'row-reverse', justifyContent: 'center', marginTop: Spacing[2] },
   registerPrompt: { ...Typography.body, color: Colors.textSecondary },
-  registerLink: { ...Typography.labelLarge, color: Colors.primary },
+  registerLink: { ...Typography.labelLarge, color: Colors.primaryDark },
 });

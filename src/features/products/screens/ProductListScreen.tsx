@@ -1,9 +1,9 @@
 /**
  * Product Listing Screen – Grid with infinite scroll, sorting, and filtering.
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, StatusBar, RefreshControl,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, StatusBar, RefreshControl, ScrollView,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -12,50 +12,75 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { HomeStackParamList } from '../../../navigation/types';
 import { ProductsService } from '../../../api/products.service';
-import { Product, ProductFilters } from '../../../types';
+import { Product, ProductFilters, getDiscountPercent } from '../../../types';
 import ProductCard from '../../../components/cards/ProductCard';
 import { ProductCardSkeleton } from '../../../components/feedback/Skeleton';
+import FloatingCartBar from '../../../components/cart/FloatingCartBar';
 import { Colors } from '../../../theme/colors';
 import { Typography, FontFamily } from '../../../theme/typography';
 import { Spacing, BorderRadius } from '../../../theme/spacing';
 import { Shadows } from '../../../theme/shadows';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type NavProp = NativeStackNavigationProp<HomeStackParamList, 'ProductList'>;
 type RoutePropType = RouteProp<HomeStackParamList, 'ProductList'>;
+type SortOrderBy = NonNullable<ProductFilters['orderby']> | 'discount';
+type SortOption = { label: string; orderby: SortOrderBy; order: NonNullable<ProductFilters['order']> };
 
-const SORT_OPTIONS: { label: string; orderby: ProductFilters['orderby']; order: ProductFilters['order'] }[] = [
+const SORT_OPTIONS: SortOption[] = [
   { label: 'الأحدث', orderby: 'date', order: 'desc' },
   { label: 'الأقل سعراً', orderby: 'price', order: 'asc' },
   { label: 'الأعلى سعراً', orderby: 'price', order: 'desc' },
   { label: 'الأعلى تقييماً', orderby: 'rating', order: 'desc' },
   { label: 'الأكثر مبيعاً', orderby: 'popularity', order: 'desc' },
+  { label: 'الأعلى خصماً', orderby: 'discount', order: 'desc' },
 ];
 
 export default function ProductListScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RoutePropType>();
   const { categoryId, categoryName, title, filter } = route.params ?? {};
 
-  const [sortIndex, setSortIndex] = useState(0);
+  const normalizedFilter = filter === 'featured' ? 'best_sellers' : filter;
+
+  const getDefaultSortIndex = useCallback((activeFilter?: RoutePropType['params']['filter']) => {
+    if (activeFilter === 'sale') {
+      return SORT_OPTIONS.findIndex((opt) => opt.orderby === 'discount');
+    }
+    if (activeFilter === 'best_sellers' || activeFilter === 'featured') {
+      return SORT_OPTIONS.findIndex((opt) => opt.orderby === 'popularity');
+    }
+    return 0;
+  }, []);
+
+  const [sortIndex, setSortIndex] = useState(() => Math.max(0, getDefaultSortIndex(normalizedFilter)));
   const sort = SORT_OPTIONS[sortIndex];
+
+  useEffect(() => {
+    setSortIndex(Math.max(0, getDefaultSortIndex(normalizedFilter)));
+  }, [normalizedFilter, getDefaultSortIndex]);
 
   const buildFilters = useCallback(
     (page: number): ProductFilters => ({
       page,
-      per_page: 50, // Increased for better initial fill
+      per_page: 50,
       category: categoryId,
-      orderby: sort.orderby,
-      order: sort.order,
-      on_sale: filter === 'sale' ? true : undefined,
-      featured: filter === 'featured' ? true : undefined,
+      orderby:
+        normalizedFilter === 'best_sellers'
+          ? 'popularity'
+          : (sort.orderby === 'discount' ? 'date' : sort.orderby),
+      order: normalizedFilter === 'best_sellers' ? 'desc' : sort.order,
+      on_sale: normalizedFilter === 'sale' ? true : undefined,
+      featured: undefined,
     }),
-    [categoryId, sort, filter],
+    [categoryId, normalizedFilter, sort.orderby, sort.order],
   );
 
   const {
     data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, refetch,
   } = useInfiniteQuery({
-    queryKey: ['products', categoryId, filter, sort.orderby, sort.order],
+    queryKey: ['products', categoryId, normalizedFilter, sort.orderby, sort.order],
     queryFn: ({ pageParam = 1 }) => ProductsService.getProducts(buildFilters(pageParam)),
     getNextPageParam: (lastPage, allPages) =>
       lastPage.length >= 50 ? allPages.length + 1 : undefined,
@@ -70,11 +95,15 @@ export default function ProductListScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  const apiProducts = data?.pages.flat() ?? [];
+  const apiProducts = useMemo(() => data?.pages.flat() ?? [], [data?.pages]);
 
-  // Use mock data if API is empty or loading failed
-  const allProducts = apiProducts;
-  // Previously: falling back to mock data if empty. Removed to avoid showing incorrect products.
+  const allProducts = useMemo(() => {
+    const products = [...apiProducts];
+    if (sort.orderby === 'discount') {
+      return products.sort((a, b) => (getDiscountPercent(b) ?? 0) - (getDiscountPercent(a) ?? 0));
+    }
+    return products;
+  }, [apiProducts, sort.orderby]);
 
   const handleProductPress = useCallback((product: Product) => {
     navigation.navigate('ProductDetail', { productId: product.id, productName: product.name });
@@ -93,12 +122,12 @@ export default function ProductListScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.secondary} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>رجوع</Text>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[2] }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="رجوع" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <MaterialCommunityIcons name="arrow-right" style={styles.backIcon} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{screentTitle}</Text>
         <View style={styles.backBtn} />
@@ -106,17 +135,23 @@ export default function ProductListScreen() {
 
       {/* Sort Bar */}
       <View style={styles.sortBar}>
-        {SORT_OPTIONS.map((opt, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[styles.sortChip, i === sortIndex && styles.sortChipActive]}
-            onPress={() => setSortIndex(i)}
-          >
-            <Text style={[styles.sortText, i === sortIndex && styles.sortTextActive]}>
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.sortScrollContent}
+        >
+          {SORT_OPTIONS.map((opt, i) => (
+            <TouchableOpacity
+              key={i}
+              style={[styles.sortChip, i === sortIndex && styles.sortChipActive]}
+              onPress={() => setSortIndex(i)}
+            >
+              <Text style={[styles.sortText, i === sortIndex && styles.sortTextActive]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Product Grid */}
@@ -151,6 +186,8 @@ export default function ProductListScreen() {
           }
         />
       )}
+
+      <FloatingCartBar />
     </View>
   );
 }
@@ -158,40 +195,48 @@ export default function ProductListScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.secondary,
     paddingTop: Spacing[10],
-    paddingBottom: Spacing[3],
+    paddingBottom: Spacing[4],
     paddingHorizontal: Spacing[4],
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    ...Shadows.sm,
+    borderBottomLeftRadius: BorderRadius['2xl'],
+    borderBottomRightRadius: BorderRadius['2xl'],
   },
   backBtn: { width: 40, alignItems: 'center' },
-  backIcon: { fontSize: 16, color: Colors.textPrimary },
+  backIcon: { fontSize: 22, color: Colors.textInverse },
   headerTitle: {
-    ...Typography.h4, color: Colors.textPrimary,
+    ...Typography.h4, color: Colors.textInverse,
     fontFamily: FontFamily.arabicBold, flex: 1, textAlign: 'center',
   },
   sortBar: {
     backgroundColor: Colors.surface,
-    flexDirection: 'row-reverse',
-    paddingHorizontal: Spacing[3],
+    marginHorizontal: Spacing[3],
+    marginTop: -Spacing[2],
+    borderRadius: BorderRadius.xl,
+    paddingHorizontal: Spacing[1],
     paddingVertical: Spacing[2],
+    ...Shadows.xs,
+  },
+  sortScrollContent: {
+    flexDirection: 'row-reverse',
     gap: Spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    paddingHorizontal: Spacing[2],
   },
   sortChip: {
     paddingHorizontal: Spacing[3],
     paddingVertical: Spacing[1.5],
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
   },
-  sortChipActive: { backgroundColor: Colors.primary },
+  sortChipActive: { backgroundColor: Colors.secondary, borderColor: Colors.secondary },
   sortText: { ...Typography.labelSmall, color: Colors.textSecondary, fontFamily: FontFamily.arabicMedium },
   sortTextActive: { color: Colors.textInverse },
-  listContent: { padding: Spacing[3] },
+  listContent: { padding: Spacing[3], paddingBottom: 100 },
   cardWrapper: { flex: 1, padding: Spacing[1.5] },
   skeletonGrid: {
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',

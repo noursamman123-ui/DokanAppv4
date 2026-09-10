@@ -70,7 +70,12 @@ export default function RegisterScreen({ navigation }: Props) {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="رجوع"
+          >
             <Text style={styles.backText}>رجوع</Text>
           </TouchableOpacity>
           <Text style={styles.title}>إنشاء حساب جديد</Text>
@@ -109,6 +114,9 @@ export default function RegisterScreen({ navigation }: Props) {
             style={[styles.registerBtn, isLoading && styles.disabled]}
             onPress={handleSubmit(onSubmit)}
             disabled={isLoading}
+            accessibilityRole="button"
+            accessibilityLabel="إنشاء الحساب"
+            accessibilityState={{ disabled: isLoading, busy: isLoading }}
           >
             {isLoading ? (
               <ActivityIndicator color={Colors.textInverse} />
@@ -119,7 +127,11 @@ export default function RegisterScreen({ navigation }: Props) {
 
           <View style={styles.loginRow}>
             <Text style={styles.loginPrompt}>لديك حساب بالفعل؟ </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Login')}
+              accessibilityRole="button"
+              accessibilityLabel="تسجيل الدخول"
+            >
               <Text style={styles.loginLink}>تسجيل الدخول</Text>
             </TouchableOpacity>
           </View>
@@ -166,5 +178,5 @@ const styles = StyleSheet.create({
   registerBtnText: { ...Typography.button, color: Colors.textInverse, fontFamily: FontFamily.arabicBold },
   loginRow: { flexDirection: 'row-reverse', justifyContent: 'center', marginTop: Spacing[2] },
   loginPrompt: { ...Typography.body, color: Colors.textSecondary },
-  loginLink: { ...Typography.labelLarge, color: Colors.primary },
+  loginLink: { ...Typography.labelLarge, color: Colors.primaryDark },
 });

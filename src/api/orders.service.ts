@@ -1,41 +1,22 @@
-import apiClient from './client';
+import apiClient, { devWarnIfMissing } from './client';
 import { Endpoints } from './endpoints';
-import { Order, CheckoutData, LocalCartItem } from '../types';
-import { TokenStorage } from '../utils/storage';
+import { Order, CheckoutData } from '../types';
 import { CartService } from './cart.service';
 
-const normalizeVariation = (
-  variation?: Record<string, string> | Array<{ attribute: string; value: string }>
-) => {
-  if (!variation) {
-    return '';
-  }
-
-  const entries = Array.isArray(variation)
-    ? variation.map(({ attribute, value }) => [attribute, value] as const)
-    : Object.entries(variation);
-
-  return entries
-    .filter(([, value]) => Boolean(value))
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([attribute, value]) => `${attribute}:${value}`)
-    .join('|');
-};
-
-const getRemoteCartItemKey = (item: {
-  product_id: number;
-  variation_id?: number;
-  variation?: Record<string, string> | Array<{ attribute: string; value: string }>;
-}) => `${item.product_id}_${item.variation_id ?? 0}_${normalizeVariation(item.variation)}`;
-
-const getLocalCartItemKey = (item: LocalCartItem) =>
-  `${item.product_id}_${item.variation_id ?? 0}_${normalizeVariation(item.variation)}`;
-
 export const OrdersService = {
-  getOrders: async (page = 1): Promise<Order[]> => {
+  getOrders: async (page = 1, phone?: string): Promise<Order[]> => {
+    const normalizedPhone = (phone ?? '').replace(/[^\d+]/g, '').trim();
     const response = await apiClient.get<Order[]>(Endpoints.account.orders, {
       params: {
         page,
+        ...(normalizedPhone
+          ? {
+              phone: normalizedPhone,
+              billing_phone: normalizedPhone,
+              shipping_phone: normalizedPhone,
+              customer_phone: normalizedPhone,
+            }
+          : {}),
       },
     });
 
@@ -67,55 +48,61 @@ export const OrdersService = {
     );
   },
 
-  getOrder: async (id: number): Promise<Order> => {
-    const response = await apiClient.get<Order>(Endpoints.account.orderDetail(id));
+  getOrder: async (id: number, phone?: string): Promise<Order> => {
+    const normalizedPhone = (phone ?? '').replace(/[^\d+]/g, '').trim();
+    const response = await apiClient.get<Order>(Endpoints.account.orderDetail(id), {
+      params: normalizedPhone
+        ? {
+            phone: normalizedPhone,
+            billing_phone: normalizedPhone,
+            shipping_phone: normalizedPhone,
+            customer_phone: normalizedPhone,
+          }
+        : undefined,
+    });
+    devWarnIfMissing('OrdersService.getOrder', response.data, ['date_modified']);
+    if (response.data?.line_items?.[0]) {
+      devWarnIfMissing('OrdersService.getOrder line_items[0]', response.data.line_items[0], ['sku', 'price', 'subtotal']);
+    }
     return response.data;
+  },
+
+  /**
+   * Fetch a single guest order using its WooCommerce order_key as the
+   * access token — the same model WooCommerce itself uses for order-pay
+   * links. No OTP needed: possessing the key (saved on-device right after
+   * checkout) is the proof.
+   */
+  getGuestOrderByKey: async (orderId: number, orderKey: string): Promise<Order> => {
+    const response = await apiClient.get<Order>(Endpoints.account.guestOrderDetail(orderId), {
+      params: { key: orderKey },
+    });
+    return response.data;
+  },
+
+  /**
+   * Recover a guest's full order history on a new device by re-verifying
+   * phone ownership via WhatsApp OTP. `otpProofToken` must come from
+   * CheckoutOtpService.verifyOtp() after sendOrdersLookupOtp().
+   */
+  getGuestOrdersByPhone: async (phone: string, otpProofToken: string): Promise<Order[]> => {
+    const response = await apiClient.get<Order[]>(Endpoints.account.guestOrders, {
+      params: { phone },
+      headers: { 'X-Dokan-OTP-Proof': otpProofToken },
+    });
+    return Array.isArray(response.data) ? response.data : [];
   },
 
   placeOrder: async (
     checkoutData: CheckoutData,
-    localItems: LocalCartItem[],
     otpProofToken?: string
   ): Promise<Order> => {
-    try {
-      await CartService.getCart();
-    } catch {
-      TokenStorage.clearCartNonce();
-      TokenStorage.clearCartToken();
-      await CartService.getCart();
-    }
-
-    const remoteCart = await CartService.getCart();
-    const localMap = new Map(localItems.map((item) => [getLocalCartItemKey(item), item]));
-    const remoteMap = new Map(remoteCart.items.map((item) => [getRemoteCartItemKey(item), item]));
-
-    for (const [key, remoteItem] of remoteMap.entries()) {
-      if (!localMap.has(key)) {
-        await CartService.removeItem(remoteItem.key);
-      }
-    }
-
-    for (const localItem of localItems) {
-      if (localItem.product_id >= 200 && localItem.product_id <= 210) {
-        continue;
-      }
-
-      const itemKey = getLocalCartItemKey(localItem);
-      const remoteItem = remoteMap.get(itemKey);
-
-      if (!remoteItem) {
-        await CartService.addItem(
-          localItem.product_id,
-          localItem.quantity,
-          localItem.variation_id || undefined,
-          localItem.variation
-        );
-        continue;
-      }
-
-      if (remoteItem.quantity !== localItem.quantity) {
-        await CartService.updateItem(remoteItem.key, localItem.quantity);
-      }
+    // The cart is already server-authoritative by this point (every add/
+    // remove/quantity change already went straight to the server) — just
+    // guard against placing an order against an empty cart.
+    const initialCart = await CartService.getCart();
+    if (initialCart.items.length === 0) {
+      throw new Error('السلة فارغة. يرجى إضافة منتجات قبل إتمام الطلب.');
     }
 
     let syncedCart = await CartService.updateCustomer({
@@ -159,11 +146,6 @@ export const OrdersService = {
       !syncedCart.coupons.some((coupon) => coupon.code.toLowerCase() === desiredCoupon.toLowerCase())
     ) {
       await CartService.applyCoupon(desiredCoupon);
-    }
-
-    const serverCart = await CartService.getCart();
-    if (serverCart.items.length === 0 && localItems.length > 0) {
-      throw new Error('تعذر مزامنة المنتجات مع الخادم. يرجى محاولة إضافة المنتجات مرة أخرى.');
     }
 
     const response = await apiClient.post<Order>(Endpoints.storeCheckout.order, checkoutData, {

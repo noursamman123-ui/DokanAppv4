@@ -18,11 +18,14 @@ import { Typography, FontFamily } from '../../theme/typography';
 import { Spacing, BorderRadius } from '../../theme/spacing';
 import { Shadows } from '../../theme/shadows';
 import { CategoryChipSkeleton } from '../../components/feedback/Skeleton';
+import FloatingCartBar from '../../components/cart/FloatingCartBar';
 import { buildFastImageSource, resolveMediaUrl } from '../../utils/media';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type NavProp = NativeStackNavigationProp<CategoriesStackParamList, 'CategoriesScreen'>;
 
 export default function CategoriesScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
   const queryClient = useQueryClient();
 
@@ -118,20 +121,18 @@ export default function CategoriesScreen() {
           )}
         </View>
         <Text style={styles.categoryName} numberOfLines={2}>{item.name}</Text>
-        {item.count > 0 && (
-          <Text style={styles.count}>{item.count} منتج</Text>
-        )}
       </TouchableOpacity>
     );
   };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.secondary} />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[2] }]}>
         <Text style={styles.title}>الأقسام</Text>
+        <Text style={styles.subtitle}>اختر القسم المناسب وابدأ التسوّق</Text>
       </View>
 
       {isLoading ? (
@@ -155,11 +156,13 @@ export default function CategoriesScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <MaterialCommunityIcons name="folder-outline" size={28} color={Colors.textTertiary} />
-              <Text style={styles.count}>لا توجد أقسام متاحة حالياً</Text>
+              <Text style={styles.emptyText}>لا توجد أقسام متاحة حالياً</Text>
             </View>
           }
         />
       )}
+
+      <FloatingCartBar />
     </View>
   );
 }
@@ -167,23 +170,33 @@ export default function CategoriesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.secondary,
     paddingTop: Spacing[10],
     paddingBottom: Spacing[4],
     paddingHorizontal: Spacing[5],
-    ...Shadows.sm,
+    borderBottomLeftRadius: BorderRadius['2xl'],
+    borderBottomRightRadius: BorderRadius['2xl'],
   },
-  title: { ...Typography.h2, color: Colors.textPrimary, fontFamily: FontFamily.arabicBold, textAlign: 'right' },
+  title: { ...Typography.h2, color: Colors.textInverse, fontFamily: FontFamily.arabicBold, textAlign: 'right' },
+  subtitle: {
+    ...Typography.caption,
+    color: 'rgba(255,255,255,0.75)',
+    fontFamily: FontFamily.arabicRegular,
+    textAlign: 'right',
+    marginTop: Spacing[1],
+  },
   grid: { padding: Spacing[4], paddingBottom: 100 },
   row: { justifyContent: 'space-between', marginBottom: Spacing[4] },
   card: {
     width: '31%',
     backgroundColor: Colors.card,
     borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
     alignItems: 'center',
     paddingVertical: Spacing[4],
     paddingHorizontal: Spacing[2],
-    ...Shadows.card,
+    ...Shadows.xs,
   },
   imageWrapper: {
     width: 64,
@@ -199,7 +212,7 @@ const styles = StyleSheet.create({
     ...Typography.labelSmall, color: Colors.textPrimary,
     fontFamily: FontFamily.arabicMedium, textAlign: 'center',
   },
-  count: { ...Typography.caption, color: Colors.textTertiary, marginTop: 2 },
+  emptyText: { ...Typography.caption, color: Colors.textTertiary, marginTop: 2 },
   skeletonGrid: {
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around',
     padding: Spacing[5], gap: Spacing[5],

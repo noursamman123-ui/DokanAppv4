@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: "com.google.gms.google-services"
 import java.util.Properties
 import java.io.FileInputStream
 
@@ -87,11 +88,11 @@ android {
 
     namespace = "com.dokanapp"
     defaultConfig {
-        applicationId "com.dokanapp"
+        applicationId "app.dokan.android"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdk 36
-        versionCode 1
-        versionName "1.0"
+        versionCode 22
+        versionName "1.7.2"
     }
     signingConfigs {
         debug {

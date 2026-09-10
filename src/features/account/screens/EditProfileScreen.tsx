@@ -7,8 +7,10 @@ import { Colors } from '../../../theme/colors';
 import { Typography, FontFamily, FontSize } from '../../../theme/typography';
 import { Spacing, BorderRadius } from '../../../theme/spacing';
 import { Shadows } from '../../../theme/shadows';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function EditProfileScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { user, updateUser } = useAuthStore();
   const [firstName, setFirstName] = useState(user?.first_name ?? '');
@@ -36,7 +38,7 @@ export default function EditProfileScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[2] }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backIcon}>رجوع</Text>
         </TouchableOpacity>

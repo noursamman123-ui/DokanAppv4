@@ -5,10 +5,13 @@
 import React, { useEffect } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useQueryClient } from '@tanstack/react-query';
 import { RootStackParamList } from './types';
+import { navigationRef } from './navigationRef';
 import { useAuthStore } from '../store/authStore';
-import { useCartStore } from '../store/cartStore';
 import { useWishlistStore } from '../store/wishlistStore';
+import { CART_QUERY_KEY } from '../hooks/useCart';
+import { CartService } from '../api/cart.service';
 import { Colors } from '../theme/colors';
 
 // Screens
@@ -35,27 +38,31 @@ const DokanNavTheme = {
 export default function RootNavigator() {
   const isHydrated = useAuthStore((s) => s.isHydrated);
   const hydrateAuth = useAuthStore((s) => s.hydrateFromStorage);
-  const hydrateCart = useCartStore((s) => s.hydrateFromStorage);
   const hydrateWishlist = useWishlistStore((s) => s.hydrateFromStorage);
- 
+  const queryClient = useQueryClient();
+
   // Hydrate persisted state on app launch
   useEffect(() => {
     hydrateAuth();
-    hydrateCart();
     hydrateWishlist();
- 
+
+    // The cart itself has no local state to hydrate anymore (the server cart
+    // is the only cart) — just warm the query cache so the cart badge on Home
+    // and the tab bar has data the instant those screens mount.
+    queryClient.prefetchQuery({ queryKey: CART_QUERY_KEY, queryFn: CartService.getCart });
+
     // Register global session expiry handler
     (globalThis as any).__onSessionExpired = () => {
       useAuthStore.getState().logout();
     };
-  }, [hydrateAuth, hydrateCart, hydrateWishlist]);
+  }, [hydrateAuth, hydrateWishlist, queryClient]);
 
   if (!isHydrated) {
     return null; // Or a dedicated InitializingScreen
   }
 
   return (
-    <NavigationContainer theme={DokanNavTheme}>
+    <NavigationContainer ref={navigationRef} theme={DokanNavTheme}>
       <Stack.Navigator
         initialRouteName="Splash"
         screenOptions={{ headerShown: false, animation: 'fade' }}

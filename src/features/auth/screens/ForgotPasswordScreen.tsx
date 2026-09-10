@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthStackParamList } from '../../../navigation/types';
 import { Colors } from '../../../theme/colors';
 import { Typography, FontFamily } from '../../../theme/typography';
@@ -10,6 +11,7 @@ import { AuthService } from '../../../api/auth.service';
 type Props = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'>;
 
 export default function ForgotPasswordScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -29,7 +31,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + Spacing[4] }]}>
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
         <Text style={styles.backText}>رجوع</Text>
       </TouchableOpacity>
@@ -103,5 +105,5 @@ const styles = StyleSheet.create({
   successBox: { alignItems: 'center', gap: Spacing[4], marginTop: Spacing[8] },
   successIcon: { fontSize: 48 },
   successText: { ...Typography.bodyLarge, color: Colors.textPrimary, textAlign: 'center' },
-  backToLogin: { ...Typography.labelLarge, color: Colors.primary },
+  backToLogin: { ...Typography.labelLarge, color: Colors.primaryDark },
 });

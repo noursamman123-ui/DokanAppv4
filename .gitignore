@@ -2,6 +2,13 @@
 #
 .DS_Store
 
+# Firebase project config — contains API keys tied to the live Firebase
+# project; kept off a public repo by default even though Google considers
+# them non-secret (protected by Firebase Security Rules / App Check, not
+# key secrecy). Each dev pulls their own copy from the Firebase console.
+android/app/google-services.json
+ios/DokanApp/GoogleService-Info.plist
+
 # Xcode
 #
 build/

@@ -56,10 +56,12 @@ export interface ProductImage {
 export interface ProductAttribute {
   id: number;
   name: string;
-  slug: string;
-  position: number;
-  visible: boolean;
-  variation: boolean;
+  slug?: string;
+  taxonomy?: string;
+  position?: number;
+  visible?: boolean;
+  variation?: boolean;
+  has_variations?: boolean;
   options?: string[];
   terms?: Array<{
     id?: number;
@@ -67,6 +69,12 @@ export interface ProductAttribute {
     slug?: string;
   }>;
   value?: string;
+}
+
+/** A parent variable product's own summary of each variation's attribute combination (name + term slug) — no price/stock, just enough to resolve which variation ID a chosen combination maps to. */
+export interface ProductVariationSummary {
+  id: number;
+  attributes: Array<{ name: string; value: string }>;
 }
 
 export interface ProductVariation {
@@ -92,6 +100,18 @@ export interface ProductRating {
   count: number | null;
 }
 
+export interface ProductReview {
+  id: number;
+  date_created: string;
+  product_id: number;
+  product_name: string;
+  reviewer: string;
+  review: string;
+  rating: number;
+  verified: boolean;
+  reviewer_avatar_urls?: Record<string, string>;
+}
+
 export interface ProductPrices {
   price: string;
   regular_price: string;
@@ -105,6 +125,21 @@ export interface ProductPrices {
   currency_suffix: string;
 }
 
+// Two structurally different real payloads get typed as `Product` in this
+// app: the WC Store API (product list/detail/related/reviews — nested
+// `prices`, `is_in_stock`/`is_purchasable`/`stock_availability`,
+// `review_count`) and the custom dokan-mobile-api home feed (flat
+// `price`/`regular_price`/`sale_price`, `stock_status`, `rating_count`,
+// no `low_stock_remaining` as of the last verified live check). Verified
+// live via `scripts/check-api-schema.js` against both — fields that don't
+// actually exist on either payload (the old `status`/`purchasable`/
+// `stock_status`-as-required/`stock_quantity`/`manage_stock`/`featured`/
+// `rating_count`-as-required/`date_created`/`date_modified`) have been
+// removed or marked optional. `related_ids`/`upsell_ids`/`cross_sell_ids`
+// are NOT present on the Store API response at all (WooCommerce omits them
+// from the public Store API by design) — the cross-sell/upsell sections in
+// ProductDetailScreen are effectively dead code until/unless a custom
+// backend endpoint exposes them.
 export interface Product {
   id: number;
   parent?: number;
@@ -112,31 +147,50 @@ export interface Product {
   slug: string;
   type: 'simple' | 'variable' | 'grouped' | 'external';
   variation?: string;
-  status: string;
+  /** @deprecated not present on any verified live response */
+  status?: string;
   permalink?: string;
   description: string;
   short_description: string;
   sku: string;
   prices: ProductPrices; // WC Store API uses nested prices
+  /** Flat price fields — only present on the dokan-mobile-api home feed shape, not the Store API. */
+  price?: string;
+  regular_price?: string;
+  sale_price?: string;
+  price_html?: string;
   on_sale: boolean;
-  purchasable: boolean;
-  stock_status: 'instock' | 'outofstock' | 'onbackorder';
-  stock_quantity: number | null;
-  manage_stock: boolean;
-  featured: boolean;
+  /** @deprecated real field is `is_purchasable` (Store API) — kept for the home-feed shape, if it ever sends it. */
+  purchasable?: boolean;
+  is_purchasable?: boolean;
+  is_in_stock?: boolean;
+  is_on_backorder?: boolean;
+  stock_availability?: { class?: string; text?: string };
+  sold_individually?: boolean;
+  has_options?: boolean;
+  /** @deprecated real field on the Store API is `is_in_stock`; the home feed does send this one flat. */
+  stock_status?: 'instock' | 'outofstock' | 'onbackorder';
+  /** @deprecated not present on any verified live response — stock count isn't exposed publicly. */
+  stock_quantity?: number | null;
+  // Only the WC Store API's real field — populated when stock is at/below the
+  // store's configured "low stock threshold", null otherwise (stock_quantity
+  // above doesn't exist on this endpoint's response at all).
+  low_stock_remaining?: number | null;
   categories: Pick<Category, 'id' | 'name' | 'slug'>[];
   images: ProductImage[];
   attributes: ProductAttribute[];
-  variations: number[];
-  rating_count: number;
+  variations: ProductVariationSummary[];
+  /** Real Store API field name for review count — NOT `rating_count` (which only the home feed sends). */
+  review_count?: number;
+  /** @deprecated only present on the home-feed shape; Store API sends `review_count`. */
+  rating_count?: number;
   average_rating: string;
-  related_ids: number[];
-  upsell_ids: number[];
-  cross_sell_ids: number[];
+  /** @deprecated WooCommerce's public Store API never returns these — see interface comment above. */
+  related_ids?: number[];
+  upsell_ids?: number[];
+  cross_sell_ids?: number[];
   weight: string;
   dimensions: ProductDimensions;
-  date_created: string;
-  date_modified: string;
 }
 
 // Computed discount percentage
@@ -159,17 +213,27 @@ export const getDiscountPercent = (product: Product): number | null => {
 };
 
 // ─── Cart ─────────────────────────────────────────────────────────────────
+// Matches the real WC Store API cart item shape — it has no product_id,
+// stock_quantity, or in_stock fields. `id` is the purchasable item's own id
+// (the product id for simple items, the variation's id for variation lines;
+// there is no parent id exposed on a variation line).
 export interface CartItem {
   key: string;           // WooCommerce cart item key
-  product_id: number;
-  variation_id: number;
+  id: number;
+  type: string;
   quantity: number;
+  quantity_limits: {
+    minimum: number;
+    maximum: number;
+    multiple_of: number;
+    editable: boolean;
+  };
   name: string;
   sku: string;
-  image: string;
-  price: string;
-  regular_price: string;
-  on_sale: boolean;
+  low_stock_remaining: number | null;
+  sold_individually: boolean;
+  images: ProductImage[];
+  prices: ProductPrices;
   totals: {
     line_subtotal: string;
     line_subtotal_tax: string;
@@ -179,9 +243,7 @@ export interface CartItem {
   variation: Array<{
     attribute: string;
     value: string;
-  }> | Record<string, string>;
-  stock_quantity: number | null;
-  in_stock: boolean;
+  }>;
 }
 
 export interface CartCoupon {
@@ -194,15 +256,20 @@ export interface CartCoupon {
   };
 }
 
+// Real WC Store API cart totals field names — note these don't match the
+// naming used by the checkout/order response (subtotal/shipping_total/total),
+// which is why every screen reading these was silently falling back to 0.
 export interface CartTotals {
-  subtotal: string;
-  subtotal_tax: string;
-  shipping_total: string;
-  shipping_tax: string;
-  discount_total: string;
-  discount_tax: string;
+  total_items: string;
+  total_items_tax: string;
+  total_fees: string;
+  total_fees_tax: string;
+  total_shipping: string;
+  total_shipping_tax: string;
+  total_discount: string;
+  total_discount_tax: string;
   total_tax: string;
-  total: string;
+  total_price: string;
   currency_code: string;
   currency_symbol: string;
   currency_minor_unit: number;
@@ -221,19 +288,6 @@ export interface Cart {
   items_weight: number;
   shipping_rates?: ShippingPackage[];
   payment_methods?: string[];
-}
-
-// Local cart item (used in Zustand store before syncing)
-export interface LocalCartItem {
-  product_id: number;
-  variation_id: number;
-  quantity: number;
-  name: string;
-  image: string;
-  price: string;
-  regular_price: string;
-  on_sale: boolean;
-  variation: Record<string, string>;
 }
 
 // ─── Wishlist ─────────────────────────────────────────────────────────────
@@ -359,6 +413,7 @@ export interface Order {
   id: number;
   parent_id?: number;
   number: string;
+  order_key?: string;
   status: OrderStatus;
   date_created: string;
   date_modified: string;
@@ -452,8 +507,15 @@ export interface BootstrapData {
       id: string;
       title: string;
       cost: string;
+      min_amount?: string;
     }>;
   }>;
+  /**
+   * Lowest free-shipping minimum-order amount found across all zones.
+   * Approximate: not zone-specific to the customer's actual address (the
+   * cart doesn't have one yet), just a general "spend X more" nudge.
+   */
+  free_shipping_min?: number | null;
   tax: {
     enabled: boolean;
     prices_include: boolean;
@@ -479,13 +541,14 @@ export interface CheckoutData {
 }
 
 export interface CheckoutOtpSendPayload {
-  first_name: string;
-  last_name: string;
-  city: string;
-  address_1: string;
+  first_name?: string;
+  last_name?: string;
+  city?: string;
+  address_1?: string;
   phone: string;
   phone_country?: string;
   cart_token?: string;
+  purpose?: 'checkout' | 'orders_lookup';
 }
 
 export interface OtpSendResponse {
@@ -498,6 +561,18 @@ export interface OtpSendResponse {
 export interface OtpVerifyResponse {
   otp_proof_token: string;
   expires_in: number;
+}
+
+// ─── Guest Order Recovery ─────────────────────────────────────────────────
+// Saved on-device right after a guest checkout so "My Orders" can show it
+// immediately without re-authentication. `orderKey` is WooCommerce's own
+// per-order secret and doubles as the guest's access token for that order.
+export interface GuestOrderRecord {
+  orderId: number;
+  orderNumber: string;
+  orderKey: string;
+  phone: string;
+  createdAt: string;
 }
 
 export interface ContactInfo {

@@ -1,6 +1,9 @@
 package com.dokanapp
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -26,6 +29,20 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+
+    // FCM's own auto-created fallback channel uses IMPORTANCE_DEFAULT, which
+    // never shows a heads-up popup — only a silent shade entry. Push
+    // notifications are set to target this channel instead (see
+    // AndroidManifest.xml's default_notification_channel_id meta-data).
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val channel = NotificationChannel(
+        "dokan_promotions",
+        "العروض والإشعارات",
+        NotificationManager.IMPORTANCE_HIGH
+      )
+      val notificationManager = getSystemService(NotificationManager::class.java)
+      notificationManager.createNotificationChannel(channel)
+    }
 
     OkHttpClientProvider.setOkHttpClientFactory {
       OkHttpClientProvider.createClientBuilder(applicationContext)

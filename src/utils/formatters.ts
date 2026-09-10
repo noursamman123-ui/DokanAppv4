@@ -19,13 +19,38 @@ export const decodeHtmlEntities = (value: string): string => {
 };
 
 /**
+ * Group the integer part of a number with thousand separators, without
+ * relying on Intl at all — used as a fallback when toLocaleString throws
+ * (seen on some low-end Android/Hermes builds without full ICU data for
+ * non-default locales), so a formatting quirk degrades to plain-but-correct
+ * digits instead of crashing the screen.
+ */
+const groupThousandsManually = (num: number): string => {
+  const rounded = Math.round(num * 100) / 100;
+  const parts = rounded.toString().split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts.join('.');
+};
+
+/**
+ * Locale-aware grouped number formatting with a non-Intl fallback.
+ */
+export const formatNumber = (num: number): string => {
+  try {
+    return num.toLocaleString('ar-SY');
+  } catch {
+    return groupThousandsManually(num);
+  }
+};
+
+/**
  * Format a price value with currency symbol (Syrian Pound).
  */
 export const formatPrice = (price: string | number, currencySymbol = 'ل.س'): string => {
   const decodedCurrencySymbol = decodeHtmlEntities(currencySymbol).trim() || 'ل.س';
   const num = typeof price === 'string' ? parseFloat(price) : price;
   if (isNaN(num)) return `0 ${decodedCurrencySymbol}`;
-  return `${num.toLocaleString('ar-SY')} ${decodedCurrencySymbol}`;
+  return `${formatNumber(num)} ${decodedCurrencySymbol}`;
 };
 
 /**
@@ -58,6 +83,29 @@ export const formatDiscount = (regularPrice: string, salePrice: string): string 
  */
 export const stripHtml = (html: string): string => {
   return html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+};
+
+/**
+ * Convert product description HTML to plain text while keeping paragraph
+ * breaks and list bullets, instead of flattening everything onto one line.
+ */
+export const stripHtmlPreserveStructure = (html: string): string => {
+  if (!html) return '';
+
+  return html
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6])>/gi, '\n\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 };
 
 /**

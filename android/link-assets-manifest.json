@@ -76,6 +76,26 @@
     {
       "path": "node_modules/react-native-vector-icons/Fonts/Zocial.ttf",
       "sha1": "6a48a962b06cc3acbdfd61df0d9a34744eea5e8d"
+    },
+    {
+      "path": "src/assets/fonts/Cairo-Bold.ttf",
+      "sha1": "20ce68e6c7002d16e708798ea6cb133cf65bb27d"
+    },
+    {
+      "path": "src/assets/fonts/Cairo-Medium.ttf",
+      "sha1": "9c85fae464a2867795c0a9f2f4b50fc8e5e44edf"
+    },
+    {
+      "path": "src/assets/fonts/Cairo-OFL.txt",
+      "sha1": "e8a5e3a019eeadb922bb5096ef974f812f9e3003"
+    },
+    {
+      "path": "src/assets/fonts/Cairo-Regular.ttf",
+      "sha1": "d1c5d33f0fa6a08b03e2c6c52b3a2d1e97a49729"
+    },
+    {
+      "path": "src/assets/fonts/Cairo-SemiBold.ttf",
+      "sha1": "61003e8a84fd69bd6e7c7de61fd42596d36a408f"
     }
   ]
 }

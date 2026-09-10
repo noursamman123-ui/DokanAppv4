@@ -1,6 +1,7 @@
-import apiClient from './client';
+import apiClient, { devWarnIfMissing } from './client';
 import { Endpoints } from './endpoints';
 import { Cart, UserAddress } from '../types';
+import { TokenStorage } from '../utils/storage';
 
 const toVariationPayload = (variation?: Record<string, string>) =>
   variation
@@ -11,8 +12,21 @@ const toVariationPayload = (variation?: Record<string, string>) =>
 
 export const CartService = {
   getCart: async (): Promise<Cart> => {
-    const response = await apiClient.get<Cart>(Endpoints.storeCart.get);
-    return response.data;
+    try {
+      const response = await apiClient.get<Cart>(Endpoints.storeCart.get);
+      devWarnIfMissing('CartService.getCart totals', response.data?.totals, [
+        'total_items', 'total_shipping', 'total_discount', 'total_price',
+      ]);
+      return response.data;
+    } catch {
+      // A stale/invalid cart nonce or token (e.g. after a long time away)
+      // makes the Store API reject the request outright — clear both and
+      // retry once with a fresh session instead of surfacing a dead cart.
+      TokenStorage.clearCartNonce();
+      TokenStorage.clearCartToken();
+      const response = await apiClient.get<Cart>(Endpoints.storeCart.get);
+      return response.data;
+    }
   },
 
   addItem: async (productId: number, quantity: number, variationId?: number, variation?: Record<string, string>): Promise<Cart> => {

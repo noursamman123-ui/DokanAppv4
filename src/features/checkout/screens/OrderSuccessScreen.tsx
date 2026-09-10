@@ -40,7 +40,7 @@ export default function OrderSuccessScreen() {
         </View>
 
         <Text style={styles.note}>
-          تم إنشاء الطلب رقم #{displayOrderNumber} وسنرسل لك تأكيد الطلب وتفاصيل التتبع عبر البريد الإلكتروني
+          تم إنشاء الطلب رقم #{displayOrderNumber} وسنرسل لك تأكيد الطلب وتحديثات الحالة عبر واتساب
         </Text>
 
         <View style={styles.actions}>
@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing[5], paddingHorizontal: Spacing[8], alignItems: 'center', marginBottom: Spacing[5],
   },
   orderLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing[1] },
-  orderNumber: { ...Typography.displayMedium, color: Colors.primary, fontFamily: FontFamily.bold },
+  orderNumber: { ...Typography.displayMedium, color: Colors.primaryDark, fontFamily: FontFamily.bold },
   note: { ...Typography.bodySmall, color: Colors.textTertiary, textAlign: 'center', marginBottom: Spacing[8], lineHeight: 22 },
   actions: { width: '100%', gap: Spacing[3] },
   primaryBtn: { backgroundColor: Colors.primary, borderRadius: BorderRadius.xl, paddingVertical: Spacing[4], alignItems: 'center' },

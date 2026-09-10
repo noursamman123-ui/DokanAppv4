@@ -10,10 +10,12 @@ import { Colors } from '../../../theme/colors';
 import { Typography, FontFamily } from '../../../theme/typography';
 import { Spacing, BorderRadius } from '../../../theme/spacing';
 import { Shadows } from '../../../theme/shadows';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type NavProp = NativeStackNavigationProp<AccountStackParamList, 'PrivacyPolicy'>;
 
 export default function PrivacyPolicyScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['privacy-policy-page'],
@@ -37,7 +39,7 @@ export default function PrivacyPolicyScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[2] }]}>
         <TouchableOpacity onPress={() => navigation.navigate('AccountScreen')}>
           <Text style={styles.backText}>رجوع</Text>
         </TouchableOpacity>

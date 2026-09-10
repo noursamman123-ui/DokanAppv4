@@ -11,10 +11,12 @@ import { Typography, FontFamily } from '../../../theme/typography';
 import { Spacing, BorderRadius } from '../../../theme/spacing';
 import { Shadows } from '../../../theme/shadows';
 import { APP_HOSTNAME } from '../../../config/environment';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type NavProp = NativeStackNavigationProp<AccountStackParamList, 'ContactUs'>;
 
 export default function ContactUsScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
   const { width } = useWindowDimensions();
   const { data, isLoading, error, refetch } = useQuery({
@@ -51,7 +53,6 @@ export default function ContactUsScreen() {
 
     const emails = data.emails.map((email) => email.toLowerCase());
     const phones = data.phones;
-    const description = data.description || '';
 
     const findEmail = (matcher: RegExp) => emails.find((email) => matcher.test(email)) ?? '';
 
@@ -80,7 +81,7 @@ export default function ContactUsScreen() {
     const blocks = [
       {
         id: 'direct',
-        title: 'التواصل المباشر<',
+        title: 'التواصل المباشر',
         email: directEmail || `contact@${hostname}`,
         phone: formatPhoneDisplay(primaryPhone),
       },
@@ -125,8 +126,12 @@ export default function ContactUsScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.navigate('AccountScreen')}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[2] }]}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('AccountScreen')}
+          accessibilityRole="button"
+          accessibilityLabel="رجوع"
+        >
           <Text style={styles.backText}>رجوع</Text>
         </TouchableOpacity>
         <Text style={styles.title}>تواصل معنا لأي استفسار</Text>
@@ -140,7 +145,12 @@ export default function ContactUsScreen() {
           <MaterialCommunityIcons name="alert-circle-outline" style={styles.errorIcon} />
           <Text style={styles.errorTitle}>تعذر جلب بيانات التواصل</Text>
           <Text style={styles.errorSubTitle}>تحقق من الاتصال ثم أعد المحاولة</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={() => refetch()}
+            accessibilityRole="button"
+            accessibilityLabel="إعادة المحاولة"
+          >
             <Text style={styles.retryText}>إعادة المحاولة</Text>
           </TouchableOpacity>
         </View>
@@ -162,13 +172,21 @@ export default function ContactUsScreen() {
                 ) : null}
 
                 {section.email ? (
-                  <TouchableOpacity onPress={() => openUrl(`mailto:${section.email}`)}>
+                  <TouchableOpacity
+                    onPress={() => openUrl(`mailto:${section.email}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`مراسلة عبر البريد الإلكتروني ${section.email}`}
+                  >
                     <Text style={styles.gridCardEmail}>{section.email}</Text>
                   </TouchableOpacity>
                 ) : null}
 
                 {section.phone ? (
-                  <TouchableOpacity onPress={() => openUrl(`tel:${section.phone}`)}>
+                  <TouchableOpacity
+                    onPress={() => openUrl(`tel:${section.phone}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`الاتصال بالرقم ${section.phone}`}
+                  >
                     <Text style={styles.gridCardPhone}>{section.phone}</Text>
                   </TouchableOpacity>
                 ) : null}
@@ -178,12 +196,22 @@ export default function ContactUsScreen() {
 
           <View style={styles.actionsRow}>
             {data.whatsapp_links[0] ? (
-              <TouchableOpacity style={styles.secondaryBtn} onPress={() => openUrl(data.whatsapp_links[0])}>
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => openUrl(data.whatsapp_links[0])}
+                accessibilityRole="button"
+                accessibilityLabel="واتساب مباشر"
+              >
                 <Text style={styles.secondaryBtnText}>واتساب مباشر</Text>
               </TouchableOpacity>
             ) : null}
 
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => openUrl(data.source_url)}>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => openUrl(data.source_url)}
+              accessibilityRole="button"
+              accessibilityLabel="فتح صفحة التواصل"
+            >
               <Text style={styles.primaryBtnText}>فتح صفحة التواصل</Text>
             </TouchableOpacity>
           </View>
@@ -196,7 +224,7 @@ export default function ContactUsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F0F0' },
+  container: { flex: 1, backgroundColor: Colors.background },
   header: {
     backgroundColor: Colors.surface,
     paddingTop: Spacing[10],

@@ -17,10 +17,11 @@ export const Endpoints = {
     login: `${CUSTOM_API}/login`,
     validate: `${JWT_API}/token/validate`,
     register: `${CUSTOM_API}/register`,
-    me: `/wp-json/wp/v2/users/me`,
+    me: `${CUSTOM_API}/profile`,
     forgotPassword: `${CUSTOM_API}/auth/forgot-password`,
     updateProfile: `${CUSTOM_API}/profile/update`,
     changePassword: `${CUSTOM_API}/auth/change-password`,
+    deleteAccount: `${CUSTOM_API}/auth/delete-account`,
   },
 
   // ─── WooCommerce Store API (no consumer key needed) ─────────────────────
@@ -68,6 +69,8 @@ export const Endpoints = {
   account: {
     orders: `${CUSTOM_API}/orders`,
     orderDetail: (id: number) => `${CUSTOM_API}/orders/${id}`,
+    guestOrders: `${CUSTOM_API}/orders/guest`,
+    guestOrderDetail: (id: number) => `${CUSTOM_API}/orders/guest/${id}`,
     addresses: `${CUSTOM_API}/addresses`,
     updateAddress: (type: 'billing' | 'shipping') => `${CUSTOM_API}/addresses/${type}`,
   },
@@ -86,6 +89,10 @@ export const Endpoints = {
     list: `${CUSTOM_API}/notifications`,
     markRead: (id: string) => `${CUSTOM_API}/notifications/${id}/read`,
     markAllRead: `${CUSTOM_API}/notifications/read-all`,
+  },
+
+  notifyMe: {
+    request: `${CUSTOM_API}/notify-me`,
   },
 
   pages: {

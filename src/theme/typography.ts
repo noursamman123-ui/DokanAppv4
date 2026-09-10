@@ -34,7 +34,7 @@ export const FontSize = {
 } as const;
 
 export const LineHeight = {
-  xs: 14,
+  xs: 16,
   sm: 18,
   base: 20,
   md: 24,
@@ -168,7 +168,6 @@ export const Typography = {
     lineHeight: LineHeight.base,
     fontWeight: FontWeight.semiBold,
     fontFamily: FontFamily.semiBold,
-    letterSpacing: 0.3,
   },
   buttonSmall: {
     fontSize: FontSize.sm,

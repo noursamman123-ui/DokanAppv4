@@ -61,7 +61,7 @@ export type WishlistStackParamList = {
 export type AccountStackParamList = {
   AccountScreen: undefined;
   Orders: undefined;
-  OrderDetail: { orderId: number };
+  OrderDetail: { orderId: number; orderKey?: string };
   EditProfile: undefined;
   Addresses: undefined;
   EditAddress: { type: 'billing' | 'shipping' };

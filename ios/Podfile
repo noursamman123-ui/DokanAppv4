@@ -12,6 +12,10 @@ linkage = ENV['USE_FRAMEWORKS']
 if linkage != nil
   Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
   use_frameworks! :linkage => linkage.to_sym
+else
+  # Firebase's Swift pods (via react-native-firebase) need module maps even
+  # under static linking, or CocoaPods fails to integrate them.
+  use_modular_headers!
 end
 
 target 'DokanApp' do

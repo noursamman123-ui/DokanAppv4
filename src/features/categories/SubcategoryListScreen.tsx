@@ -20,6 +20,8 @@ import { Typography, FontFamily } from '../../theme/typography';
 import { Spacing, BorderRadius } from '../../theme/spacing';
 import { Shadows } from '../../theme/shadows';
 import { buildFastImageSource, resolveMediaUrl } from '../../utils/media';
+import FloatingCartBar from '../../components/cart/FloatingCartBar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type NavProp = NativeStackNavigationProp<CategoriesStackParamList, 'SubcategoryList'>;
 type RoutePropType = RouteProp<CategoriesStackParamList, 'SubcategoryList'>;
@@ -28,6 +30,7 @@ const { width } = Dimensions.get('window');
 const ITEM_WIDTH = (width - Spacing[4] * 2 - Spacing[3]) / 2;
 
 export default function SubcategoryListScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RoutePropType>();
   const { categoryId, categoryName } = route.params;
@@ -92,19 +95,18 @@ export default function SubcategoryListScreen() {
       </View>
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
-        <Text style={styles.count}>{item.count} منتج</Text>
       </View>
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.secondary} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>رجوع</Text>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[2] }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="رجوع" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <MaterialCommunityIcons name="arrow-right" style={styles.backIcon} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{categoryName}</Text>
         <TouchableOpacity 
@@ -142,6 +144,8 @@ export default function SubcategoryListScreen() {
           }
         />
       )}
+
+      <FloatingCartBar />
     </View>
   );
 }
@@ -149,34 +153,37 @@ export default function SubcategoryListScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.secondary,
     paddingTop: Spacing[10],
-    paddingBottom: Spacing[3],
+    paddingBottom: Spacing[4],
     paddingHorizontal: Spacing[4],
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    ...Shadows.sm,
+    borderBottomLeftRadius: BorderRadius['2xl'],
+    borderBottomRightRadius: BorderRadius['2xl'],
   },
   backBtn: { width: 40, alignItems: 'center' },
-  backIcon: { fontSize: 16, color: Colors.textPrimary },
+  backIcon: { fontSize: 22, color: Colors.textInverse },
   headerTitle: {
-    ...Typography.h4, color: Colors.textPrimary,
+    ...Typography.h4, color: Colors.textInverse,
     fontFamily: FontFamily.arabicBold, flex: 1, textAlign: 'center',
   },
   viewAllBtn: { paddingHorizontal: Spacing[2] },
   viewAllText: { ...Typography.labelSmall, color: Colors.primary, fontFamily: FontFamily.arabicBold },
   
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  listContent: { padding: Spacing[4] },
+  listContent: { padding: Spacing[4], paddingBottom: 100 },
   
   card: {
     width: ITEM_WIDTH,
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
     marginBottom: Spacing[4],
     marginHorizontal: Spacing[2],
-    ...Shadows.card,
+    ...Shadows.xs,
     overflow: 'hidden',
   },
   imageContainer: { width: '100%', height: ITEM_WIDTH * 0.8, backgroundColor: Colors.surfaceSecondary },
@@ -184,7 +191,6 @@ const styles = StyleSheet.create({
   placeholderImage: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
   info: { padding: Spacing[3], alignItems: 'center' },
   name: { ...Typography.label, color: Colors.textPrimary, fontFamily: FontFamily.arabicSemiBold, textAlign: 'center' },
-  count: { ...Typography.caption, color: Colors.textTertiary, marginTop: 2 },
   
   emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: Spacing[20] },
   emptyText: { ...Typography.bodyLarge, color: Colors.textSecondary, fontFamily: FontFamily.arabicMedium, marginBottom: Spacing[6] },

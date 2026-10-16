@@ -2,8 +2,7 @@
  * Contract tests for CartService — thin wrappers around the WC Store API
  * cart endpoints. The server cart is the only cart (see src/hooks/useCart.ts),
  * so these just verify each method hits the right endpoint with the right
- * payload and returns the server's response untouched, plus the stale-token
- * retry behavior in getCart().
+ * payload and returns the server's response untouched.
  */
 import { CartService } from '../cart.service';
 import { makeCartFixture } from '../__fixtures__/cart.fixture';
@@ -47,25 +46,22 @@ describe('CartService.getCart', () => {
     expect(result.totals.total_price).toBe('10000');
   });
 
-  it('clears the cart nonce/token and retries once when the first call fails', async () => {
-    const cart = makeCartFixture();
-    mockedApi.get
-      .mockRejectedValueOnce(new Error('invalid nonce'))
-      .mockResolvedValueOnce({ data: cart });
+  // Regression test — getCart() used to catch *any* failure (a timeout, a
+  // 500, a momentary network drop — not just an invalid nonce) and respond
+  // by clearing both the cart nonce and the cart-token before retrying. That
+  // meant a single transient blip permanently threw away the real session
+  // and silently replaced it with a brand-new empty cart on the next
+  // request — the actual cause of "the cart empties itself when I leave the
+  // cart screen and come back". The stale-nonce case is already handled
+  // narrowly at the client.ts interceptor level; getCart() itself must not
+  // swallow errors or touch cart storage at all.
+  it('propagates a failure as-is instead of wiping the cart session and retrying', async () => {
+    mockedApi.get.mockRejectedValue(new Error('network blip'));
 
-    const result = await CartService.getCart();
-
-    expect(TokenStorage.clearCartNonce).toHaveBeenCalled();
-    expect(TokenStorage.clearCartToken).toHaveBeenCalled();
-    expect(mockedApi.get).toHaveBeenCalledTimes(2);
-    expect(result.totals.total_price).toBe('10000');
-  });
-
-  it('propagates the error if the retry also fails', async () => {
-    mockedApi.get.mockRejectedValue(new Error('still broken'));
-
-    await expect(CartService.getCart()).rejects.toThrow('still broken');
-    expect(mockedApi.get).toHaveBeenCalledTimes(2);
+    await expect(CartService.getCart()).rejects.toThrow('network blip');
+    expect(mockedApi.get).toHaveBeenCalledTimes(1);
+    expect(TokenStorage.clearCartNonce).not.toHaveBeenCalled();
+    expect(TokenStorage.clearCartToken).not.toHaveBeenCalled();
   });
 });
 

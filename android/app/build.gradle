@@ -58,6 +58,14 @@ react {
 
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ *
+ * Tried enabling this on 2026-09-11 to improve Play Console's app-size score
+ * (build succeeds with R8 on — see proguard-rules.pro, still just the
+ * default template with no custom keep rules). Deferred to a dedicated round
+ * because live on-device verification couldn't be completed that session
+ * (emulator instability), and a missing keep rule for one of the many native
+ * modules here is exactly the kind of thing that only surfaces as a runtime
+ * crash, not a build failure.
  */
 def enableProguardInReleaseBuilds = false
 
@@ -91,8 +99,8 @@ android {
         applicationId "app.dokan.android"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdk 36
-        versionCode 22
-        versionName "1.7.2"
+        versionCode 26
+        versionName "1.8.2"
     }
     signingConfigs {
         debug {
@@ -117,6 +125,7 @@ android {
         release {
             signingConfig = hasReleaseKeystore ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }

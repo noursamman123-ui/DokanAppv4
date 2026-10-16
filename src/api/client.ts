@@ -105,24 +105,65 @@ const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue = [];
 };
 
+// Axios lowercases header keys: 'x-wc-store-api-nonce' and 'nonce'
+const storeCartHeadersFrom = (headers: Record<string, unknown> | undefined) => {
+  if (!headers) return;
+  const nonce = (headers['x-wc-store-api-nonce'] ?? headers['nonce']) as string | undefined;
+  if (nonce) TokenStorage.setCartNonce(nonce);
+  const cartToken = headers['cart-token'] as string | undefined;
+  if (cartToken) TokenStorage.setCartToken(cartToken);
+};
+
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
-    // Extract and store cart nonce from WC Store API responses
-    // Axios lowercases header keys: 'x-wc-store-api-nonce' and 'nonce'
-    const nonce = response.headers['x-wc-store-api-nonce'] || response.headers['nonce'];
-    if (nonce) {
-      TokenStorage.setCartNonce(nonce);
-    }
-
-    const cartToken = response.headers['cart-token'];
-    if (cartToken) {
-      TokenStorage.setCartToken(cartToken);
-    }
-    
+    storeCartHeadersFrom(response.headers as Record<string, unknown>);
     return response;
   },
   async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const originalRequest = error.config as InternalAxiosRequestConfig & {
+      _retry?: boolean;
+      _cartRetry?: boolean;
+    };
+
+    // A cart mutation with no nonce yet (first-ever cart interaction this
+    // session, before the boot-time cart prefetch has landed, or after a
+    // long time away) gets rejected 401 by WooCommerce — it requires a
+    // nonce established by a prior GET, not just valid auth. WooCommerce
+    // conveniently returns a fresh nonce even on the 401 itself, so grab
+    // that (or fall back to a real GET /cart) and retry once, instead of
+    // surfacing this as a generic failure — or worse, falling through to
+    // the branch below, which would log the user out entirely for what is
+    // purely a cart-session hiccup, not an expired auth token.
+    if (
+      error.response?.status === 401 &&
+      originalRequest.url?.includes('/wc/store/') &&
+      !originalRequest._cartRetry
+    ) {
+      originalRequest._cartRetry = true;
+      storeCartHeadersFrom(error.response.headers as Record<string, unknown>);
+
+      if (!TokenStorage.getCartNonce()) {
+        try {
+          const cartResponse = await apiClient.get(`${BASE_URL}/wp-json/wc/store/v1/cart`);
+          storeCartHeadersFrom(cartResponse.headers as Record<string, unknown>);
+        } catch {
+          // Fall through — retry with whatever we have; the error below
+          // (if it still 401s) is a more honest failure than looping.
+        }
+      }
+
+      const cartNonce = TokenStorage.getCartNonce();
+      const cartToken = TokenStorage.getCartToken();
+      if (cartNonce) {
+        originalRequest.headers['Nonce'] = cartNonce;
+        originalRequest.headers['X-WC-Store-API-Nonce'] = cartNonce;
+      }
+      if (cartToken) {
+        originalRequest.headers['Cart-Token'] = cartToken;
+      }
+
+      return apiClient(originalRequest);
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       // Token expired — try to refresh or force logout

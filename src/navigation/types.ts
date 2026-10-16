@@ -9,6 +9,8 @@ export type AuthStackParamList = {
   Login: { redirect?: string } | undefined;
   Register: undefined;
   ForgotPassword: undefined;
+  PhoneLogin: undefined;
+  CollectEmail: undefined;
 };
 
 // ─── Main Tab Navigator ────────────────────────────────────────────────────
@@ -65,6 +67,7 @@ export type AccountStackParamList = {
   EditProfile: undefined;
   Addresses: undefined;
   EditAddress: { type: 'billing' | 'shipping' };
+  LinkPhone: undefined;
   Notifications: undefined;
   PrivacyPolicy: undefined;
   Terms: undefined;

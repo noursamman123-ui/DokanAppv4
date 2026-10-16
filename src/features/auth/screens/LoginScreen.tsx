@@ -184,6 +184,17 @@ export default function LoginScreen({ navigation }: Props) {
             )}
           </TouchableOpacity>
 
+          {/* Phone Login */}
+          <TouchableOpacity
+            style={styles.phoneLoginBtn}
+            onPress={() => navigation.navigate('PhoneLogin')}
+            accessibilityRole="button"
+            accessibilityLabel="تسجيل الدخول برقم الجوال"
+          >
+            <MaterialCommunityIcons name="whatsapp" style={styles.phoneLoginIcon} />
+            <Text style={styles.phoneLoginText}>تسجيل الدخول برقم الجوال</Text>
+          </TouchableOpacity>
+
           {/* Register Link */}
           <View style={styles.registerRow}>
             <Text style={styles.registerPrompt}>ليس لديك حساب؟ </Text>
@@ -254,6 +265,20 @@ const styles = StyleSheet.create({
   },
   loginBtnDisabled: { opacity: 0.7 },
   loginBtnText: { ...Typography.button, color: Colors.textInverse, fontFamily: FontFamily.arabicBold },
+
+  phoneLoginBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing[2],
+    borderWidth: 1.5,
+    borderColor: '#25D366',
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing[3],
+    marginTop: Spacing[3],
+  },
+  phoneLoginIcon: { fontSize: 20, color: '#25D366' },
+  phoneLoginText: { ...Typography.button, color: '#128C46', fontFamily: FontFamily.arabicBold },
 
   registerRow: { flexDirection: 'row-reverse', justifyContent: 'center', marginTop: Spacing[2] },
   registerPrompt: { ...Typography.body, color: Colors.textSecondary },

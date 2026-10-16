@@ -1,6 +1,12 @@
 import apiClient from './client';
 import { Endpoints } from './endpoints';
-import { CheckoutOtpSendPayload, OtpSendResponse, OtpVerifyResponse } from '../types';
+import {
+  CheckoutOtpSendPayload,
+  OtpSendResponse,
+  OtpVerifyResponse,
+  OtpLoginVerifyResponse,
+  OtpLinkPhoneVerifyResponse,
+} from '../types';
 
 const unwrapPayload = <T>(payload: unknown): T => {
   const data = payload as { success?: boolean; data?: T };
@@ -51,6 +57,42 @@ export const CheckoutOtpService = {
   }): Promise<OtpVerifyResponse> => {
     const response = await apiClient.post(Endpoints.checkoutOtp.verify, payload);
     return unwrapPayload<OtpVerifyResponse>(response.data);
+  },
+
+  /**
+   * Log in (or create a new passwordless account) via a phone number
+   * verified over WhatsApp — no account/email needed up front.
+   */
+  sendLoginOtp: async (phone: string, phoneCountry: string): Promise<OtpSendResponse> => {
+    const response = await apiClient.post(
+      Endpoints.checkoutOtp.send,
+      { purpose: 'login', phone, phone_country: phoneCountry },
+      { timeout: OTP_SEND_TIMEOUT_MS }
+    );
+    return unwrapPayload<OtpSendResponse>(response.data);
+  },
+
+  verifyLoginOtp: async (payload: { otp_session_id: string; code: string }): Promise<OtpLoginVerifyResponse> => {
+    const response = await apiClient.post(Endpoints.checkoutOtp.verify, payload);
+    return unwrapPayload<OtpLoginVerifyResponse>(response.data);
+  },
+
+  /**
+   * Verify and attach a phone number to the *currently logged-in* account,
+   * so it becomes usable with sendLoginOtp/verifyLoginOtp afterward.
+   */
+  sendLinkPhoneOtp: async (phone: string, phoneCountry: string): Promise<OtpSendResponse> => {
+    const response = await apiClient.post(
+      Endpoints.checkoutOtp.send,
+      { purpose: 'link_phone', phone, phone_country: phoneCountry },
+      { timeout: OTP_SEND_TIMEOUT_MS }
+    );
+    return unwrapPayload<OtpSendResponse>(response.data);
+  },
+
+  verifyLinkPhoneOtp: async (payload: { otp_session_id: string; code: string }): Promise<OtpLinkPhoneVerifyResponse> => {
+    const response = await apiClient.post(Endpoints.checkoutOtp.verify, payload);
+    return unwrapPayload<OtpLinkPhoneVerifyResponse>(response.data);
   },
 };
 

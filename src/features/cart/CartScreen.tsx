@@ -77,7 +77,12 @@ export default function CartScreen() {
 
   const items = cart?.items ?? [];
   const visibleItems = items.filter((item) => item.key !== pendingRemoval?.key);
-  const isEmpty = !isCartLoading && visibleItems.length === 0;
+  // Based on the real (server-confirmed) item count, not visibleItems —
+  // removing the only item in the cart would otherwise make visibleItems
+  // empty the instant the removal is requested, switching straight to the
+  // empty-cart screen and skipping the 5s undo banner entirely (the banner
+  // only renders in the non-empty branch below).
+  const isEmpty = !isCartLoading && items.length === 0;
 
   const currencySymbol = cart?.totals?.currency_symbol || 'ل.س';
   const subtotal = parseMoney(cart?.totals.total_items);

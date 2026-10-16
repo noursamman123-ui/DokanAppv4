@@ -29,6 +29,7 @@ export default function AccountScreen() {
     // phone + WhatsApp OTP) without logging in — OrdersScreen handles both.
     { icon: 'package-variant-closed', label: 'طلباتي', screen: 'Orders' as const, requireAuth: false },
     { icon: 'account-edit-outline', label: 'تعديل الملف الشخصي', screen: 'EditProfile' as const, requireAuth: true },
+    { icon: 'whatsapp', label: 'ربط رقم الجوال', screen: 'LinkPhone' as const, requireAuth: true },
     { icon: 'map-marker-outline', label: 'عناويني', screen: 'Addresses' as const, requireAuth: true },
     { icon: 'bell-outline', label: 'الإشعارات', screen: 'Notifications' as const, requireAuth: false },
     { icon: 'shield-lock-outline', label: 'سياسة الخصوصية', screen: 'PrivacyPolicy' as const, requireAuth: false },

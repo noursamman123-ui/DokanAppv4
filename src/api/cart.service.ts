@@ -1,7 +1,6 @@
 import apiClient, { devWarnIfMissing } from './client';
 import { Endpoints } from './endpoints';
 import { Cart, UserAddress } from '../types';
-import { TokenStorage } from '../utils/storage';
 
 const toVariationPayload = (variation?: Record<string, string>) =>
   variation
@@ -12,21 +11,22 @@ const toVariationPayload = (variation?: Record<string, string>) =>
 
 export const CartService = {
   getCart: async (): Promise<Cart> => {
-    try {
-      const response = await apiClient.get<Cart>(Endpoints.storeCart.get);
-      devWarnIfMissing('CartService.getCart totals', response.data?.totals, [
-        'total_items', 'total_shipping', 'total_discount', 'total_price',
-      ]);
-      return response.data;
-    } catch {
-      // A stale/invalid cart nonce or token (e.g. after a long time away)
-      // makes the Store API reject the request outright — clear both and
-      // retry once with a fresh session instead of surfacing a dead cart.
-      TokenStorage.clearCartNonce();
-      TokenStorage.clearCartToken();
-      const response = await apiClient.get<Cart>(Endpoints.storeCart.get);
-      return response.data;
-    }
+    // No catch-and-wipe fallback here on purpose: the client.ts response
+    // interceptor already recovers from a stale/missing nonce (the one real
+    // reason this call can legitimately 401) by fetching a fresh nonce and
+    // retrying — narrowly, only for that case. This used to also catch here
+    // and unconditionally clear both the nonce AND the cart-token on *any*
+    // failure (a timeout, a 500, a momentary network drop switching networks
+    // in the background) — which throws away the real cart-token and starts
+    // a brand-new empty cart on the very next successful request. That was
+    // the actual cause of "the cart empties itself when I leave and come
+    // back" — every cart-screen focus triggers a getCart() refetch, and any
+    // transient blip permanently destroyed the session, not just that call.
+    const response = await apiClient.get<Cart>(Endpoints.storeCart.get);
+    devWarnIfMissing('CartService.getCart totals', response.data?.totals, [
+      'total_items', 'total_shipping', 'total_discount', 'total_price',
+    ]);
+    return response.data;
   },
 
   addItem: async (productId: number, quantity: number, variationId?: number, variation?: Record<string, string>): Promise<Cart> => {

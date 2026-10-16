@@ -548,7 +548,7 @@ export interface CheckoutOtpSendPayload {
   phone: string;
   phone_country?: string;
   cart_token?: string;
-  purpose?: 'checkout' | 'orders_lookup';
+  purpose?: 'checkout' | 'orders_lookup' | 'login' | 'link_phone';
 }
 
 export interface OtpSendResponse {
@@ -561,6 +561,20 @@ export interface OtpSendResponse {
 export interface OtpVerifyResponse {
   otp_proof_token: string;
   expires_in: number;
+}
+
+// Returned by /checkout/otp/verify when the session's purpose was 'login' —
+// same shape as AuthResponse (so the caller can pass it straight to
+// useAuthStore().setAuth() like any other login) plus is_new_user, which
+// tells the caller whether this WhatsApp login just created a brand-new
+// account (starting with a placeholder email) or matched an existing one.
+export interface OtpLoginVerifyResponse extends AuthResponse {
+  is_new_user: boolean;
+}
+
+// Returned when the session's purpose was 'link_phone'.
+export interface OtpLinkPhoneVerifyResponse {
+  user: User;
 }
 
 // ─── Guest Order Recovery ─────────────────────────────────────────────────

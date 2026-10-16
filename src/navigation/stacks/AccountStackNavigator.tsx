@@ -7,6 +7,7 @@ import OrderDetailScreen from '../../features/orders/screens/OrderDetailScreen';
 import EditProfileScreen from '../../features/account/screens/EditProfileScreen';
 import AddressesScreen from '../../features/account/screens/AddressesScreen';
 import EditAddressScreen from '../../features/account/screens/EditAddressScreen';
+import LinkPhoneScreen from '../../features/account/screens/LinkPhoneScreen';
 import NotificationsScreen from '../../features/notifications/NotificationsScreen';
 import ContactUsScreen from '../../features/account/screens/ContactUsScreen';
 import PrivacyPolicyScreen from '../../features/account/screens/PrivacyPolicyScreen';
@@ -23,6 +24,7 @@ export default function AccountStackNavigator() {
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Addresses" component={AddressesScreen} />
       <Stack.Screen name="EditAddress" component={EditAddressScreen} />
+      <Stack.Screen name="LinkPhone" component={LinkPhoneScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="ContactUs" component={ContactUsScreen} />
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />

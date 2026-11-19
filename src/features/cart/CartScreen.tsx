@@ -99,7 +99,7 @@ export default function CartScreen() {
 
   const { data: bootstrapData } = useQuery({
     queryKey: ['bootstrap'],
-    queryFn: BootstrapService.getBootstrapData,
+    queryFn: () => BootstrapService.getBootstrapData(),
     staleTime: 5 * 60 * 1000,
   });
 

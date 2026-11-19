@@ -411,7 +411,7 @@ export default function CheckoutScreen() {
 
   const { data: bootstrapData, isLoading: isPaymentMethodsLoading } = useQuery({
     queryKey: ['bootstrap'],
-    queryFn: BootstrapService.getBootstrapData,
+    queryFn: () => BootstrapService.getBootstrapData(),
     staleTime: 5 * 60 * 1000,
   });
 

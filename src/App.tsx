@@ -15,6 +15,7 @@ import RootNavigator from './navigation/RootNavigator';
 import { queryClient } from './services/queryClient';
 import { initPushNotifications } from './services/pushNotifications';
 import ErrorBoundary from './components/feedback/ErrorBoundary';
+import AppUpdateGate from './features/appUpdate/AppUpdateGate';
 
 // Suppress known non-critical warnings in development
 LogBox.ignoreLogs(['ViewPropTypes', 'Require cycle']);
@@ -34,7 +35,9 @@ export default function App() {
             translucent
           />
           <ErrorBoundary>
-            <RootNavigator />
+            <AppUpdateGate>
+              <RootNavigator />
+            </AppUpdateGate>
           </ErrorBoundary>
         </QueryClientProvider>
       </SafeAreaProvider>

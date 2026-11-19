@@ -7,7 +7,7 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { RootStackParamList } from './types';
-import { navigationRef } from './navigationRef';
+import { flushPendingNavigation, navigationRef } from './navigationRef';
 import { useAuthStore } from '../store/authStore';
 import { useWishlistStore } from '../store/wishlistStore';
 import { CART_QUERY_KEY } from '../hooks/useCart';
@@ -62,7 +62,11 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef} theme={DokanNavTheme}>
+    <NavigationContainer
+      ref={navigationRef}
+      theme={DokanNavTheme}
+      onReady={flushPendingNavigation}
+    >
       <Stack.Navigator
         initialRouteName="Splash"
         screenOptions={{ headerShown: false, animation: 'fade' }}

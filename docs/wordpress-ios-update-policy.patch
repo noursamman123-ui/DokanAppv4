@@ -1,0 +1,9 @@
+diff --git a/includes/endpoints/class-bootstrap.php b/includes/endpoints/class-bootstrap.php
+--- a/includes/endpoints/class-bootstrap.php
++++ b/includes/endpoints/class-bootstrap.php
+@@ -114,4 +114,5 @@
+         // ── App Config ──────────────────────────────────────────────
+         $config = [
+             'min_app_version'   => '1.0.0',
++            'min_ios_app_version' => get_option( 'dokan_mobile_min_ios_app_version', '' ),
+             'maintenance_mode'  => get_option( 'dokan_mobile_maintenance', false ),

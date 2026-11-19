@@ -99,8 +99,8 @@ android {
         applicationId "app.dokan.android"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdk 36
-        versionCode 26
-        versionName "1.8.2"
+        versionCode 27
+        versionName "1.8.3"
     }
     signingConfigs {
         debug {

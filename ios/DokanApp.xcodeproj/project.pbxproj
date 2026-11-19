@@ -14,6 +14,7 @@
 		3AD3337EC01853BE048C8FE4 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		710905D703EF40F6ACD22CE8 /* Cairo-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = AC700EA558A04937BD132A08 /* Cairo-Medium.ttf */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
+		7BFC2A132C7D4BDB95D7DEA3 /* AppVersion.m in Sources */ = {isa = PBXBuildFile; fileRef = 7BFC2A142C7D4BDB95D7DEA3 /* AppVersion.m */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		90D39AD3B5E84684AFEE5CBD /* Cairo-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E383A619025447DF819F0127 /* Cairo-Bold.ttf */; };
 		E3A4945AAA284E449ADC8872 /* Cairo-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 74B93D16BFB041569B3B02F0 /* Cairo-OFL.txt */; };
@@ -32,6 +33,7 @@
 		6C1752D9F6B64C9C8B00891D /* Cairo-SemiBold.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Cairo-SemiBold.ttf"; path = "../src/assets/fonts/Cairo-SemiBold.ttf"; sourceTree = "<group>"; };
 		74B93D16BFB041569B3B02F0 /* Cairo-OFL.txt */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Cairo-OFL.txt"; path = "../src/assets/fonts/Cairo-OFL.txt"; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = DokanApp/AppDelegate.swift; sourceTree = "<group>"; };
+		7BFC2A142C7D4BDB95D7DEA3 /* AppVersion.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AppVersion.m; path = DokanApp/AppVersion.m; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = DokanApp/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		89B2899E69FA720D629DF7A2 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "DokanApp/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		AC700EA558A04937BD132A08 /* Cairo-Medium.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Cairo-Medium.ttf"; path = "../src/assets/fonts/Cairo-Medium.ttf"; sourceTree = "<group>"; };
@@ -71,6 +73,7 @@
 				1414E5C52FAF673000340DD5 /* DokanApp.entitlements */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
+				7BFC2A142C7D4BDB95D7DEA3 /* AppVersion.m */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
@@ -297,6 +300,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				7BFC2A132C7D4BDB95D7DEA3 /* AppVersion.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -311,7 +315,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = DokanApp/DokanApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026091902;
+				CURRENT_PROJECT_VERSION = 2026112001;
 				DEVELOPMENT_TEAM = 5JCPU3A85H;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = DokanApp/Info.plist;
@@ -320,7 +324,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8.2;
+				MARKETING_VERSION = 1.8.3;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -345,7 +349,7 @@
 				CODE_SIGN_ENTITLEMENTS = DokanApp/DokanApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2026091902;
+				CURRENT_PROJECT_VERSION = 2026112001;
 				DEVELOPMENT_TEAM = 5JCPU3A85H;
 				INFOPLIST_FILE = DokanApp/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -353,7 +357,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8.2;
+				MARKETING_VERSION = 1.8.3;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

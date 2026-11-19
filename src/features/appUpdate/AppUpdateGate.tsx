@@ -1,6 +1,7 @@
 import React, { PropsWithChildren, useEffect } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   Image,
   Linking,
@@ -20,8 +21,25 @@ import { requiresForcedUpdate } from './versionPolicy';
 const PLAY_STORE_APP_URL = 'market://details?id=app.dokan.android';
 const PLAY_STORE_WEB_URL =
   'https://play.google.com/store/apps/details?id=app.dokan.android';
+const APP_STORE_URL = 'https://apps.apple.com/app/id6745801224';
 
-export function AndroidUpdateGate({ children }: PropsWithChildren) {
+async function openUpdateStore() {
+  try {
+    if (Platform.OS === 'ios') {
+      await Linking.openURL(APP_STORE_URL);
+      return;
+    }
+    try {
+      await Linking.openURL(PLAY_STORE_APP_URL);
+    } catch {
+      await Linking.openURL(PLAY_STORE_WEB_URL);
+    }
+  } catch {
+    Alert.alert('تعذّر فتح المتجر', 'حاول مرة أخرى أو افتح متجر التطبيقات وابحث عن دكان.');
+  }
+}
+
+function MobileUpdateGate({ children }: PropsWithChildren) {
   const installedVersion = getInstalledAppVersion();
   const bootstrapQuery = useQuery({
     queryKey: ['bootstrap'],
@@ -56,7 +74,10 @@ export function AndroidUpdateGate({ children }: PropsWithChildren) {
     );
   }
 
-  const minimumVersion = bootstrapQuery.data?.config?.min_app_version ?? '';
+  const config = bootstrapQuery.data?.config;
+  const minimumVersion = Platform.OS === 'ios'
+    ? config?.min_ios_app_version
+    : config?.min_app_version;
 
   if (!requiresForcedUpdate(installedVersion, minimumVersion)) {
     return <>{children}</>;
@@ -87,13 +108,7 @@ export function AndroidUpdateGate({ children }: PropsWithChildren) {
           accessibilityRole="button"
           accessibilityLabel="تحديث التطبيق الآن"
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          onPress={async () => {
-            try {
-              await Linking.openURL(PLAY_STORE_APP_URL);
-            } catch {
-              await Linking.openURL(PLAY_STORE_WEB_URL);
-            }
-          }}
+          onPress={openUpdateStore}
         >
           <Text style={styles.buttonText}>تحديث الآن</Text>
         </Pressable>
@@ -107,8 +122,8 @@ export function AndroidUpdateGate({ children }: PropsWithChildren) {
 }
 
 export default function AppUpdateGate({ children }: PropsWithChildren) {
-  return Platform.OS === 'android' ? (
-    <AndroidUpdateGate>{children}</AndroidUpdateGate>
+  return Platform.OS === 'android' || Platform.OS === 'ios' ? (
+    <MobileUpdateGate>{children}</MobileUpdateGate>
   ) : (
     <>{children}</>
   );

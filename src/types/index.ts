@@ -523,6 +523,7 @@ export interface BootstrapData {
   };
   config: {
     min_app_version: string;
+    min_ios_app_version?: string;
     maintenance_mode: boolean;
     registration_open: boolean;
     api_version: string;
